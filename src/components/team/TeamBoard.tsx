@@ -1,252 +1,364 @@
-import { useState } from 'react'
-import { Users, Plus, UserCheck, Trash2 } from 'lucide-react'
-import type { TeamTaskStatus } from '../../types/database'
-import { useTeamTasks } from '../../hooks/useTeamTasks'
+import { useMemo, useState } from 'react'
+import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
+import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
+import { useKpis } from '../../hooks/useKpis'
+import { useRocks } from '../../hooks/useRocks'
+import type { Kpi, Rock, TeamTask } from '../../types/database'
+import { useTeam, currentQuarter, quarterLabel, firstName, monthKey, monthLabel, shortDate } from '../../lib/team'
+import { PageShell, PageHeader } from '../layout/PageShell'
+import { Avatar } from '../ui/Avatar'
 
-interface Props {
-  currentUserId: string
+const CURRENT = 'current'
+
+// Link values are encoded as "kpi:<id>" or "rock:<id>" in the picker
+function linkValue(t: Pick<TeamTask, 'kpi_id' | 'rock_id'>) {
+  return t.kpi_id ? `kpi:${t.kpi_id}` : t.rock_id ? `rock:${t.rock_id}` : ''
+}
+function parseLink(v: string) {
+  return { kpi_id: v.startsWith('kpi:') ? v.slice(4) : null, rock_id: v.startsWith('rock:') ? v.slice(5) : null }
 }
 
-const STATUS_COLS: { id: TeamTaskStatus; label: string; color: string }[] = [
-  { id: 'todo', label: 'To Do', color: '#eff6ff' },
-  { id: 'in-progress', label: 'In Progress', color: '#fef3c7' },
-  { id: 'done', label: 'Done', color: '#f0fdf4' },
-]
+export function TeamBoard() {
+  const { me, profiles, canEdit } = useTeam()
+  const board = useTeamTasks()
+  const { kpis } = useKpis()
+  const now = currentQuarter()
+  const { rocks } = useRocks(quarterLabel(now.q, now.year))
 
-export function TeamBoard({ currentUserId }: Props) {
-  const { tasks, members, loading, addTeamTask, updateTaskStatus, assignTask, deleteTeamTask } = useTeamTasks()
-  const [showAdd, setShowAdd] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [newAssignee, setNewAssignee] = useState('')
-  const [newDesc, setNewDesc] = useState('')
+  const [view, setView] = useState(CURRENT)
+  const [adding, setAdding] = useState(false)
+  const [archiveMsg, setArchiveMsg] = useState<string | null>(null)
 
-  function handleAdd() {
-    if (!newTitle.trim()) return
-    addTeamTask(
-      newTitle.trim(),
-      currentUserId,
-      newAssignee || undefined,
-      newDesc.trim() || undefined,
-    )
-    setNewTitle('')
-    setNewAssignee('')
-    setNewDesc('')
-    setShowAdd(false)
+  const months = useMemo(
+    () => [...new Set(board.tasks.map(t => t.archived_month).filter(Boolean) as string[])].sort().reverse(),
+    [board.tasks],
+  )
+  const rows = board.tasks.filter(t => (view === CURRENT ? !t.archived_month : t.archived_month === view))
+  const doneCount = board.tasks.filter(t => t.status === 'done' && !t.archived_month).length
+  const unalignedCount = rows.filter(t => !t.kpi_id && !t.rock_id && t.status !== 'done').length
+
+  async function archive() {
+    const n = await board.archiveCompleted()
+    setArchiveMsg(n ? `Archived ${n} completed task${n > 1 ? 's' : ''}.` : 'Nothing to archive.')
   }
 
+  const canEditTask = (t: TeamTask) => t.created_by === me.id || canEdit(t.assigned_to)
+
   return (
-    <div className="flex-1 overflow-auto p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Users size={18} className="text-blue-600" />
-            <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>
-              Team Board
-            </h1>
-          </div>
-          <p className="text-sm text-gray-400 ml-7">Cross-team tasks and assignments</p>
-        </div>
-        <button
-          onClick={() => setShowAdd(v => !v)}
-          className="flex items-center gap-2 text-sm font-medium text-white px-4 py-2 rounded-xl transition-colors hover:opacity-90"
-          style={{ background: '#2563EB' }}
-        >
-          <Plus size={15} />
-          Add task
-        </button>
+    <PageShell>
+      <PageHeader
+        icon={<Users size={18} className="text-blue-600" />}
+        title="Team Board"
+        subtitle="Joint and meeting-assigned tasks, each tied to a KPI or rock. Task-by-task detail stays in Monday."
+        actions={
+          <>
+            <select
+              value={view}
+              onChange={e => { setView(e.target.value); setAdding(false) }}
+              aria-label="Month"
+              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm"
+            >
+              <option value={CURRENT}>This month ({monthLabel(monthKey())})</option>
+              {months.map(m => <option key={m} value={m}>Archive · {monthLabel(m)}</option>)}
+            </select>
+            {view === CURRENT && (
+              <button
+                onClick={() => setAdding(true)}
+                className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl hover:opacity-90"
+                style={{ background: '#2563EB' }}
+              >
+                <Plus size={15} /> Add task
+              </button>
+            )}
+          </>
+        }
+      />
+
+      {board.error && <p className="text-sm text-red-600 mb-3">{board.error}</p>}
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm min-w-[860px]">
+          <thead>
+            <tr className="text-left text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400 border-b border-gray-100">
+              <th className="w-10 px-4 py-3" aria-label="Done" />
+              <th className="px-2 py-3">Task</th>
+              <th className="px-2 py-3 w-36">Owner</th>
+              <th className="px-2 py-3 w-32">Due</th>
+              <th className="px-2 py-3">Notes</th>
+              <th className="px-2 py-3 w-56">KPI / Rock</th>
+              <th className="px-2 py-3 w-28">Source</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {adding && (
+              <AddRow
+                kpis={kpis}
+                rocks={rocks}
+                onCancel={() => setAdding(false)}
+                onSave={async task => { if (await board.addTeamTask(task, me.id)) setAdding(false) }}
+              />
+            )}
+            {board.loading ? (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+            ) : rows.length === 0 && !adding ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                  {view === CURRENT ? 'No team tasks yet. Use "Add task" to create one.' : 'Nothing archived for this month.'}
+                </td>
+              </tr>
+            ) : rows.map(t => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                kpis={kpis}
+                rocks={rocks}
+                editable={canEditTask(t) && view === CURRENT}
+                profiles={profiles}
+                onUpdate={patch => board.updateTask(t.id, patch)}
+                onDelete={() => board.deleteTeamTask(t.id)}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Add form */}
-      {showAdd && (
-        <div className="card p-5 mb-6 border border-blue-100">
-          <h4 className="text-sm font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Archivo, sans-serif' }}>
-            New Team Task
-          </h4>
-          <div className="space-y-3">
-            <input
-              autoFocus
-              type="text"
-              placeholder="Task title…"
-              value={newTitle}
-              onChange={e => setNewTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              className="w-full text-sm text-gray-800 placeholder-gray-400 outline-none border border-gray-200 rounded-lg px-3 py-2"
-            />
-            <input
-              type="text"
-              placeholder="Description (optional)"
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              className="w-full text-sm text-gray-500 placeholder-gray-400 outline-none border border-gray-200 rounded-lg px-3 py-2"
-            />
-            <select
-              value={newAssignee}
-              onChange={e => setNewAssignee(e.target.value)}
-              className="w-full text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white"
-            >
-              <option value="">Assign to… (optional)</option>
-              {members.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name ?? m.email}
-                  {m.id === currentUserId ? ' (me)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex gap-2 justify-end mt-4">
-            <button onClick={() => setShowAdd(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">
-              Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={!newTitle.trim()}
-              className="text-xs font-medium text-white px-4 py-1.5 rounded-lg disabled:opacity-40"
-              style={{ background: '#2563EB' }}
-            >
-              Create Task
-            </button>
-          </div>
+      {view === CURRENT && (
+        <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-gray-500">
+          {unalignedCount > 0 && (
+            <span className="flex items-center gap-1 text-amber-700">
+              <AlertTriangle size={12} /> {unalignedCount} open task{unalignedCount > 1 ? 's' : ''} not linked to a KPI or rock
+            </span>
+          )}
+          <span className="ml-auto">
+            Monthly memory: completed tasks move to that month's archive.
+          </span>
+          <button
+            onClick={archive}
+            disabled={doneCount === 0}
+            className="flex items-center gap-1.5 font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1.5 disabled:opacity-40"
+          >
+            <Archive size={13} /> Archive {doneCount} completed
+          </button>
+          {archiveMsg && <span className="text-gray-400">{archiveMsg}</span>}
         </div>
       )}
-
-      {/* Kanban columns */}
-      {loading ? (
-        <div className="grid grid-cols-3 gap-4">
-          {STATUS_COLS.map(col => (
-            <div key={col.id} className="rounded-[14px] p-4" style={{ background: col.color }}>
-              <div className="h-5 w-20 bg-gray-200 rounded animate-pulse mb-3" />
-              <div className="space-y-2">
-                {[1, 2].map(i => <div key={i} className="h-20 bg-white/60 rounded-xl animate-pulse" />)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {STATUS_COLS.map(col => {
-            const colTasks = tasks.filter(t => t.status === col.id)
-            return (
-              <div key={col.id} className="rounded-[14px] p-4" style={{ background: col.color }}>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    {col.label}
-                  </h4>
-                  <span className="text-xs text-gray-400 font-medium bg-white/60 px-2 py-0.5 rounded-full">
-                    {colTasks.length}
-                  </span>
-                </div>
-                <div className="space-y-2 min-h-[80px]">
-                  {colTasks.map(task => (
-                    <TeamTaskCard
-                      key={task.id}
-                      task={task}
-                      members={members}
-                      currentUserId={currentUserId}
-                      onStatusChange={updateTaskStatus}
-                      onAssign={assignTask}
-                      onDelete={deleteTeamTask}
-                    />
-                  ))}
-                  {colTasks.length === 0 && (
-                    <div className="h-12 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                      <span className="text-xs text-gray-300">No tasks</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
+    </PageShell>
   )
 }
 
-interface CardProps {
-  task: ReturnType<typeof useTeamTasks>['tasks'][number]
-  members: ReturnType<typeof useTeamTasks>['members']
-  currentUserId: string
-  onStatusChange: (id: string, status: TeamTaskStatus) => void
-  onAssign: (id: string, assignedTo: string | null) => void
-  onDelete: (id: string) => void
+// ---------- link picker ----------
+
+function LinkSelect({ ownerId, value, onChange, kpis, rocks, highlight }: {
+  ownerId: string | null
+  value: string
+  onChange: (v: string) => void
+  kpis: Kpi[]
+  rocks: Rock[]
+  highlight?: boolean
+}) {
+  const { byId } = useTeam()
+  // Owner's own KPIs/rocks first, then everyone else's
+  const sortOwner = <T extends { user_id: string }>(xs: T[]) =>
+    [...xs].sort((a, b) => Number(b.user_id === ownerId) - Number(a.user_id === ownerId))
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      aria-label="Link to KPI or rock"
+      className="w-full text-xs rounded-lg px-2 py-1.5 bg-white"
+      style={{ border: highlight && !value ? '1.5px solid #93c5fd' : '1px solid #e5e7eb', color: value ? '#1e293b' : '#2563EB' }}
+    >
+      <option value="">What does this advance?</option>
+      {kpis.length > 0 && (
+        <optgroup label="KPIs">
+          {sortOwner(kpis).map(k => <option key={k.id} value={`kpi:${k.id}`}>{firstName(byId(k.user_id))} · {k.title}</option>)}
+        </optgroup>
+      )}
+      {rocks.length > 0 && (
+        <optgroup label="Rocks (this quarter)">
+          {sortOwner(rocks).map(r => <option key={r.id} value={`rock:${r.id}`}>{firstName(byId(r.user_id))} · {r.title}</option>)}
+        </optgroup>
+      )}
+    </select>
+  )
 }
 
-function TeamTaskCard({ task, members, currentUserId, onStatusChange, onAssign, onDelete }: CardProps) {
-  const assignee = task.assignee
-  const isAssignedToMe = task.assigned_to === currentUserId
+// ---------- add row ----------
+
+function AddRow({ kpis, rocks, onSave, onCancel }: {
+  kpis: Kpi[]
+  rocks: Rock[]
+  onSave: (t: NewTeamTask) => void
+  onCancel: () => void
+}) {
+  const { me, profiles } = useTeam()
+  const [title, setTitle] = useState('')
+  const [owner, setOwner] = useState(me.id)
+  const [due, setDue] = useState('')
+  const [notes, setNotes] = useState('')
+  const [link, setLink] = useState('')
+  // Team meeting is on Mondays — default the flag on that day
+  const [inMeeting, setInMeeting] = useState(new Date().getDay() === 1)
+
+  function save() {
+    if (!title.trim()) return
+    onSave({
+      title: title.trim(),
+      assigned_to: owner || null,
+      due_date: due || null,
+      description: notes.trim() || null,
+      assigned_in_meeting: inMeeting,
+      ...parseLink(link),
+    })
+  }
+
+  const keys = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') save()
+    if (e.key === 'Escape') onCancel()
+  }
+  const notifies = owner && owner !== me.id && !inMeeting
 
   return (
-    <div className="card p-3 group">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-sm font-medium text-gray-900 leading-snug flex-1">{task.title}</p>
-        <button
-          onClick={() => onDelete(task.id)}
-          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all shrink-0 mt-0.5"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-
-      {task.description && (
-        <p className="text-xs text-gray-400 mb-2 leading-relaxed">{task.description}</p>
-      )}
-
-      <div className="flex items-center justify-between gap-2">
-        {/* Assignee */}
-        <div className="flex items-center gap-1">
-          {assignee ? (
-            <div className="flex items-center gap-1.5">
-              {assignee.avatar_url ? (
-                <img src={assignee.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
-              ) : (
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                  style={{ background: isAssignedToMe ? '#2563EB' : '#6b7280' }}
-                >
-                  {(assignee.full_name ?? assignee.email)[0]?.toUpperCase()}
-                </div>
-              )}
-              <span className={`text-xs font-medium ${isAssignedToMe ? 'text-blue-600' : 'text-gray-500'}`}>
-                {isAssignedToMe ? 'You' : (assignee.full_name ?? assignee.email.split('@')[0])}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 text-gray-300">
-              <UserCheck size={13} />
-              <span className="text-xs">Unassigned</span>
-            </div>
-          )}
+    <tr className="bg-blue-50/50 border-b border-blue-100 align-top">
+      <td className="px-4 py-2.5" />
+      <td className="px-2 py-2">
+        <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onKeyDown={keys} placeholder="New task…"
+          className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-400" />
+      </td>
+      <td className="px-2 py-2">
+        <select value={owner} onChange={e => setOwner(e.target.value)} aria-label="Owner" className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+          <option value="">Unassigned</option>
+          {profiles.map(p => <option key={p.id} value={p.id}>{firstName(p)}{p.id === me.id ? ' (me)' : ''}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-2">
+        <input type="date" value={due} onChange={e => setDue(e.target.value)} aria-label="Due date" className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white" />
+      </td>
+      <td className="px-2 py-2">
+        <input value={notes} onChange={e => setNotes(e.target.value)} onKeyDown={keys} placeholder="Notes"
+          className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none" />
+      </td>
+      <td className="px-2 py-2">
+        <LinkSelect ownerId={owner} value={link} onChange={setLink} kpis={kpis} rocks={rocks} highlight />
+        {!link && <p className="text-[10px] text-amber-700 mt-1">Strongly encouraged — unlinked tasks are flagged "Unaligned"</p>}
+      </td>
+      <td className="px-2 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 pt-1.5">
+          <input type="checkbox" checked={inMeeting} onChange={e => setInMeeting(e.target.checked)} /> In meeting
+        </label>
+        {notifies && <p className="text-[10px] text-violet-700 mt-1">Owner will be notified</p>}
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex flex-col gap-1">
+          <button onClick={save} disabled={!title.trim()} className="text-xs font-semibold text-white px-2.5 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>Save</button>
+          <button onClick={onCancel} className="text-[11px] text-gray-500">Cancel</button>
         </div>
+      </td>
+    </tr>
+  )
+}
 
-        {/* Status pill as dropdown */}
-        <select
-          value={task.status}
-          onChange={e => onStatusChange(task.id, e.target.value as TeamTaskStatus)}
-          className={`status-pill ${task.status} cursor-pointer outline-none border-none bg-transparent`}
-          style={{ appearance: 'none', paddingRight: '4px' }}
-        >
-          <option value="todo" className="text-gray-800 bg-white">To Do</option>
-          <option value="in-progress" className="text-gray-800 bg-white">In Progress</option>
-          <option value="done" className="text-gray-800 bg-white">Done</option>
-        </select>
-      </div>
+// ---------- existing row ----------
 
-      {/* Reassign control */}
-      <div className="mt-2 pt-2 border-t border-gray-100">
-        <select
-          value={task.assigned_to ?? ''}
-          onChange={e => onAssign(task.id, e.target.value || null)}
-          className="w-full text-xs text-gray-400 outline-none border-none bg-transparent cursor-pointer"
-        >
-          <option value="">Reassign…</option>
-          {members.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.full_name ?? m.email}{m.id === currentUserId ? ' (me)' : ''}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
+function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: {
+  task: TeamTask
+  kpis: Kpi[]
+  rocks: Rock[]
+  editable: boolean
+  profiles: ReturnType<typeof useTeam>['profiles']
+  onUpdate: (patch: Partial<TeamTask>) => void
+  onDelete: () => void
+}) {
+  const { byId, me } = useTeam()
+  const [notes, setNotes] = useState(task.description ?? '')
+  const owner = byId(task.assigned_to)
+  const creator = byId(task.created_by)
+  const done = task.status === 'done'
+  const linked = task.kpi_id || task.rock_id
+  const kpi = kpis.find(k => k.id === task.kpi_id)
+  const rock = rocks.find(r => r.id === task.rock_id)
+  const overdue = !done && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+
+  return (
+    <tr className={`border-b border-gray-50 last:border-0 group align-middle ${done ? 'opacity-60' : ''}`}>
+      <td className="px-4 py-2.5">
+        <input
+          type="checkbox"
+          checked={done}
+          disabled={!editable}
+          onChange={e => onUpdate({ status: e.target.checked ? 'done' : 'todo' })}
+          aria-label={done ? 'Mark not done' : 'Mark done'}
+          className="w-4 h-4 accent-blue-600"
+        />
+      </td>
+      <td className="px-2 py-2.5">
+        <p className={`font-semibold text-gray-900 ${done ? 'line-through' : ''}`}>{task.title}</p>
+        {task.needs_discussion && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 rounded-full px-2 py-0.5 mt-1">
+            <MessageCircle size={10} /> Discuss at next meeting
+          </span>
+        )}
+      </td>
+      <td className="px-2 py-2.5">
+        {editable ? (
+          <div className="flex items-center gap-1.5">
+            <Avatar profile={owner} size={24} />
+            <select value={task.assigned_to ?? ''} onChange={e => onUpdate({ assigned_to: e.target.value || null })} aria-label="Owner"
+              className="text-xs bg-transparent outline-none min-w-0 flex-1 cursor-pointer">
+              <option value="">Unassigned</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{firstName(p)}{p.id === me.id ? ' (me)' : ''}</option>)}
+            </select>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5"><Avatar profile={owner} size={24} /><span className="text-xs text-gray-700">{firstName(owner)}</span></div>
+        )}
+      </td>
+      <td className="px-2 py-2.5">
+        {editable ? (
+          <input type="date" value={task.due_date ?? ''} onChange={e => onUpdate({ due_date: e.target.value || null })} aria-label="Due date"
+            className={`text-xs bg-transparent outline-none tabular-nums ${overdue ? 'text-red-600 font-semibold' : 'text-gray-700'}`} />
+        ) : (
+          <span className={`text-xs tabular-nums ${overdue ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{shortDate(task.due_date)}</span>
+        )}
+      </td>
+      <td className="px-2 py-2.5">
+        {editable ? (
+          <input value={notes} onChange={e => setNotes(e.target.value)}
+            onBlur={() => notes !== (task.description ?? '') && onUpdate({ description: notes.trim() || null })}
+            placeholder="—" className="w-full text-xs text-gray-600 bg-transparent outline-none focus:bg-white focus:border focus:border-gray-200 rounded px-1 py-0.5" />
+        ) : (
+          <span className="text-xs text-gray-600">{task.description || '—'}</span>
+        )}
+      </td>
+      <td className="px-2 py-2.5">
+        {editable && !done ? (
+          <div>
+            <LinkSelect ownerId={task.assigned_to} value={linkValue(task)} onChange={v => onUpdate(parseLink(v))} kpis={kpis} rocks={rocks} />
+            {!linked && <UnalignedBadge />}
+          </div>
+        ) : linked ? (
+          <span className="text-xs text-blue-600">{kpi ? `KPI · ${kpi.title}` : rock ? `Rock · ${rock.title}` : task.kpi_id ? 'KPI' : 'Rock'}</span>
+        ) : <UnalignedBadge />}
+      </td>
+      <td className="px-2 py-2.5 text-xs text-gray-400">
+        {task.source === 'monday' ? 'Monday' : task.assigned_in_meeting ? 'Meeting' : `Added by ${firstName(creator)}`}
+      </td>
+      <td className="px-2 py-2.5">
+        {editable && (
+          <button onClick={onDelete} aria-label="Delete task" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+            <Trash2 size={13} />
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+function UnalignedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-800 bg-amber-100 rounded-full px-2 py-0.5">
+      <AlertTriangle size={10} /> Unaligned
+    </span>
   )
 }
