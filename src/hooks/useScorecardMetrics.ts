@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { ScorecardMetric, MetricKey } from '../types/database'
+import type { ScorecardMetric, MetricKey, MetricHistory } from '../types/database'
 
 export type { MetricKey, ScorecardMetric }
 
 export function useScorecardMetrics(year: number, loggedInUserId: string) {
   const [metrics, setMetrics] = useState<ScorecardMetric[]>([])
+  const [history, setHistory] = useState<MetricHistory[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchMetrics()
@@ -14,11 +16,12 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
 
   async function fetchMetrics() {
     setLoading(true)
-    const { data } = await supabase
-      .from('scorecard_metrics')
-      .select('*')
-      .eq('year', year)
-    setMetrics((data as ScorecardMetric[]) ?? [])
+    const [m, h] = await Promise.all([
+      supabase.from('scorecard_metrics').select('*').eq('year', year),
+      supabase.from('metric_history').select('*').eq('year', year).order('edited_at', { ascending: true }),
+    ])
+    setMetrics((m.data as ScorecardMetric[]) ?? [])
+    setHistory((h.data as MetricHistory[]) ?? [])
     setLoading(false)
   }
 
@@ -39,7 +42,12 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
       .select()
       .single()
 
-    if (!error && data) {
+    if (error || !data) {
+      setError("Couldn't save that number. Check your connection and try again.")
+      return
+    }
+    setError(null)
+    {
       const updated = data as ScorecardMetric
       setMetrics(m => {
         const exists = m.some(x => x.metric_key === key)
@@ -47,8 +55,14 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
           ? m.map(x => x.metric_key === key ? updated : x)
           : [...m, updated]
       })
+      // the database trigger wrote a history row; reload it
+      const { data: h } = await supabase
+        .from('metric_history').select('*').eq('year', year).order('edited_at', { ascending: true })
+      setHistory((h as MetricHistory[]) ?? [])
     }
   }
 
-  return { metrics, loading, updateMetric, refetch: fetchMetrics }
+  const historyFor = (key: MetricKey) => history.filter(h => h.metric_key === key)
+
+  return { metrics, loading, error, updateMetric, historyFor, refetch: fetchMetrics }
 }

@@ -1,104 +1,61 @@
 import { useState, useRef } from 'react'
-import { Target, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Target, Plus, Trash2, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { useAnnualGoals } from '../hooks/useAnnualGoals'
 import { useScorecardMetrics } from '../hooks/useScorecardMetrics'
-import type { GoalStatus, Profile } from '../types/database'
+import { useRocks } from '../hooks/useRocks'
+import { useKpis } from '../hooks/useKpis'
+import type { GoalStatus, MetricHistory, RockStatus } from '../types/database'
 import type { MetricKey, ScorecardMetric } from '../hooks/useScorecardMetrics'
-
-interface Props {
-  loggedInUserId: string
-  profiles: Profile[]
-}
+import { useTeam, currentQuarter, quarterLabel, displayName, firstName, shortDate } from '../lib/team'
+import { PageShell, SectionLabel, ProgressBar } from '../components/layout/PageShell'
+import { Avatar } from '../components/ui/Avatar'
+import { StatusPill } from '../components/ui/StatusPill'
 
 const CURRENT_YEAR = new Date().getFullYear()
-
-const STATUS_OPTIONS: { value: GoalStatus; label: string; pillClass: string }[] = [
-  { value: 'not-started', label: 'Not Started', pillClass: 'not-started' },
-  { value: 'in-progress', label: 'In Progress', pillClass: 'in-progress' },
-  { value: 'on-track',    label: 'On Track',    pillClass: 'on-track' },
-  { value: 'done',        label: 'Done',        pillClass: 'goal-done' },
-]
-
-function goalPillClass(status: GoalStatus) {
-  return status === 'done' ? 'goal-done' : status
-}
-
-// SVG Icons for metrics
-function StudentsIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  )
-}
-
-function SchoolsIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21V9l9-6 9 6v12" />
-      <rect x="8" y="15" width="8" height="6" />
-      <rect x="10" y="10" width="4" height="5" />
-    </svg>
-  )
-}
-
-function DollarsIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  )
-}
+const GOAL_OPTIONS: GoalStatus[] = ['not-started', 'in-progress', 'on-track', 'done']
+const ROCK_OPTIONS: RockStatus[] = ['on-track', 'off-track', 'done']
 
 type MetricConfig = {
   label: string
-  icon: React.ReactNode
   format: (v: number) => string
   inputPrefix?: string
 }
 
 const METRIC_CONFIG: Record<MetricKey, MetricConfig> = {
-  students: {
-    label: 'Students Enrolled',
-    icon: <StudentsIcon />,
-    format: (v) => v.toLocaleString(),
-  },
-  schools: {
-    label: 'Schools Partnered',
-    icon: <SchoolsIcon />,
-    format: (v) => v.toLocaleString(),
-  },
+  schools: { label: 'Schools', format: v => v.toLocaleString() },
   dollars_raised: {
-    label: 'Dollars Raised',
-    icon: <DollarsIcon />,
-    format: (v) =>
-      '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    label: 'Raised',
+    format: v => v >= 10000 ? '$' + Math.round(v / 1000).toLocaleString() + 'K' : '$' + v.toLocaleString(),
     inputPrefix: '$',
   },
+  students: { label: 'Girls served', format: v => v.toLocaleString() },
 }
 
-const METRIC_ORDER: MetricKey[] = ['students', 'schools', 'dollars_raised']
+const METRIC_ORDER: MetricKey[] = ['schools', 'dollars_raised', 'students']
+
+// ---------- metric tile ----------
 
 interface MetricCardProps {
   metricKey: MetricKey
   metric: ScorecardMetric | undefined
+  history: MetricHistory[]
   onUpdate: (key: MetricKey, field: 'actual' | 'target', value: number | null) => void
 }
 
-function MetricCard({ metricKey, metric, onUpdate }: MetricCardProps) {
+function MetricCard({ metricKey, metric, history, onUpdate }: MetricCardProps) {
+  const { byId } = useTeam()
   const [editingField, setEditingField] = useState<'actual' | 'target' | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const config = METRIC_CONFIG[metricKey]
 
   const actual = metric?.actual ?? 0
   const target = metric?.target ?? 0
-  const pct = target > 0 ? Math.min((actual / target) * 100, 100) : 0
-  const pctDisplay = target > 0 ? Math.round((actual / target) * 100) : 0
+  const pct = target > 0 ? (actual / target) * 100 : 0
+  const actuals = history.filter(h => h.actual != null)
+  const last3 = actuals.slice(-3)
+  const sparkMax = Math.max(...last3.map(h => h.actual!), 1)
 
   function startEdit(field: 'actual' | 'target') {
     setEditingField(field)
@@ -115,132 +72,116 @@ function MetricCard({ metricKey, metric, onUpdate }: MetricCardProps) {
       setEditingField(null)
       return
     }
-    onUpdate(metricKey, editingField, num)
+    const current = editingField === 'actual' ? metric?.actual : metric?.target
+    if (num !== (current ?? null)) onUpdate(metricKey, editingField, num)
     setEditingField(null)
   }
 
+  const input = (big: boolean) => (
+    <input
+      ref={inputRef}
+      type="number"
+      min="0"
+      value={editValue}
+      onChange={e => setEditValue(e.target.value)}
+      onBlur={commitEdit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') commitEdit()
+        if (e.key === 'Escape') setEditingField(null)
+      }}
+      className={big ? 'text-3xl font-bold border-b-2 outline-none w-full bg-transparent' : 'text-xs border-b outline-none w-24 bg-transparent'}
+      style={{ borderColor: '#2563EB', color: big ? '#0B1E39' : '#2563EB', fontFamily: big ? 'Archivo, sans-serif' : undefined }}
+    />
+  )
+
   return (
-    <div className="card p-6 flex-1 min-w-0 flex flex-col">
-      {/* Icon + label */}
-      <div className="flex items-center gap-2.5 mb-5">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: '#EEF2F7', color: '#2563EB' }}
-        >
-          {config.icon}
+    <div className="card p-5 min-w-0 flex flex-col">
+      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">{config.label}</span>
+
+      <div className="flex items-end gap-3 mt-2">
+        <div className="flex-1 min-w-0">
+          {editingField === 'actual' ? input(true) : (
+            <button onClick={() => startEdit('actual')} title="Click to edit"
+              className="text-3xl font-bold text-left hover:opacity-70 cursor-text tabular-nums"
+              style={{ color: '#0B1E39', fontFamily: 'Archivo, sans-serif' }}>
+              {config.format(actual)}
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-xs text-gray-400">of</span>
+            {editingField === 'target' ? input(false) : (
+              <button onClick={() => startEdit('target')} title="Click to set target"
+                className="text-xs font-medium hover:opacity-70 cursor-text" style={{ color: '#2563EB' }}>
+                {target > 0 ? config.format(target) : 'set target'}
+              </button>
+            )}
+            <span className="text-xs text-gray-400">target</span>
+          </div>
         </div>
-        <span className="text-sm font-semibold text-gray-600" style={{ fontFamily: 'Archivo, sans-serif' }}>
-          {config.label}
+
+        {/* last 3 values */}
+        {last3.length > 1 && (
+          <div className="flex items-end gap-1 h-9" aria-label={`Last ${last3.length} values`}>
+            {last3.map((h, i) => (
+              <div key={h.id} title={`${config.format(h.actual!)} · ${shortDate(h.edited_at)}`}
+                className="w-2.5 rounded-sm"
+                style={{ height: `${Math.max(12, (h.actual! / sparkMax) * 100)}%`, background: i === last3.length - 1 ? '#2563EB' : '#bfdbfe' }} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4"><ProgressBar pct={pct} tone={pct >= 100 ? 'green' : 'blue'} /></div>
+
+      <div className="flex items-center justify-between mt-2 text-[11px] text-gray-400">
+        <span>
+          {metric?.updated_by
+            ? `Updated by ${firstName(byId(metric.updated_by))} · ${shortDate(metric.updated_at)}`
+            : 'Not updated yet'}
         </span>
-      </div>
-
-      {/* Actual value (large, editable) */}
-      <div className="mb-1">
-        {editingField === 'actual' ? (
-          <div className="flex items-center gap-1">
-            {config.inputPrefix && (
-              <span className="text-2xl font-bold" style={{ color: '#0B1E39', fontFamily: 'Archivo, sans-serif' }}>
-                {config.inputPrefix}
-              </span>
-            )}
-            <input
-              ref={inputRef}
-              type="number"
-              min="0"
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              onBlur={commitEdit}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitEdit()
-                if (e.key === 'Escape') setEditingField(null)
-              }}
-              className="text-3xl font-bold border-b-2 outline-none w-full bg-transparent"
-              style={{
-                borderColor: '#2563EB',
-                color: '#0B1E39',
-                fontFamily: 'Archivo, sans-serif',
-              }}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => startEdit('actual')}
-            title="Click to edit"
-            className="text-3xl font-bold text-left hover:opacity-70 transition-opacity cursor-text"
-            style={{ color: '#0B1E39', fontFamily: 'Archivo, sans-serif' }}
-          >
-            {config.format(actual)}
+        {actuals.length > 0 && (
+          <button onClick={() => setShowHistory(v => !v)} className="font-semibold text-blue-600 hover:underline">
+            {showHistory ? 'Hide history' : 'History'}
           </button>
         )}
       </div>
 
-      {/* Target */}
-      <div className="flex items-center gap-1.5 mb-5">
-        <span className="text-xs text-gray-400">of</span>
-        {editingField === 'target' ? (
-          <div className="flex items-center gap-0.5">
-            {config.inputPrefix && (
-              <span className="text-xs font-medium" style={{ color: '#2563EB' }}>
-                {config.inputPrefix}
-              </span>
-            )}
-            <input
-              ref={editingField === 'target' ? inputRef : undefined}
-              type="number"
-              min="0"
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              onBlur={commitEdit}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitEdit()
-                if (e.key === 'Escape') setEditingField(null)
-              }}
-              className="text-xs border-b outline-none w-24 bg-transparent"
-              style={{ borderColor: '#2563EB', color: '#2563EB' }}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => startEdit('target')}
-            title="Click to set target"
-            className="text-xs font-medium hover:opacity-70 transition-opacity cursor-text"
-            style={{ color: '#2563EB' }}
-          >
-            {target > 0 ? config.format(target) : 'set target'}
-          </button>
-        )}
-        <span className="text-xs text-gray-400">target</span>
-      </div>
-
-      {/* Progress bar */}
-      <div className="mt-auto">
-        <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: '#E5E7EB' }}>
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${pct}%`, background: '#2563EB' }}
-          />
-        </div>
-        <p
-          className="text-xs font-medium"
-          style={{ color: pctDisplay >= 100 ? '#16a34a' : '#6B7280' }}
-        >
-          {pctDisplay}% of target
-        </p>
-      </div>
+      {showHistory && (
+        <ul className="mt-3 border-t border-gray-100 pt-2 space-y-1 max-h-40 overflow-y-auto">
+          {[...history].reverse().map(h => (
+            <li key={h.id} className="flex text-xs text-gray-600 gap-2">
+              <span className="tabular-nums font-semibold">{h.actual != null ? config.format(h.actual) : '—'}</span>
+              <span className="text-gray-400">/ {h.target != null ? config.format(h.target) : '—'}</span>
+              <span className="ml-auto text-gray-400">{firstName(byId(h.edited_by))} · {shortDate(h.edited_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
-export function Scorecard({ loggedInUserId, profiles }: Props) {
+// ---------- page ----------
+
+export function Scorecard() {
+  const { me, profiles, canEdit, openDashboard } = useTeam()
   const [year, setYear] = useState(CURRENT_YEAR)
-  const { goals, loading: goalsLoading, addGoal, updateGoalStatus, deleteGoal } = useAnnualGoals(year, loggedInUserId)
-  const { metrics, loading: metricsLoading, updateMetric } = useScorecardMetrics(year, loggedInUserId)
+  const now = currentQuarter()
+  const [q, setQ] = useState(now.q)
+  const quarter = quarterLabel(q, year)
+
+  const { goals, loading: goalsLoading, error: goalsError, addGoal, updateGoalStatus, deleteGoal } = useAnnualGoals(year, me.id)
+  const { metrics, loading: metricsLoading, error: metricsError, updateMetric, historyFor } = useScorecardMetrics(year, me.id)
+  const rocks = useRocks(quarter)
+  const { areas, kpis } = useKpis()
 
   const [showAdd, setShowAdd] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newOwner, setNewOwner] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [rockFor, setRockFor] = useState<string | null>(null)
+  const [rockTitle, setRockTitle] = useState('')
 
   const years = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 
@@ -253,222 +194,210 @@ export function Scorecard({ loggedInUserId, profiles }: Props) {
     setShowAdd(false)
   }
 
+  function saveRock(ownerId: string) {
+    if (!rockTitle.trim()) return
+    rocks.addRock(ownerId, rockTitle.trim())
+    setRockTitle('')
+    setRockFor(null)
+  }
+
+  const pill = (active: boolean) => ({ background: active ? '#2563EB' : 'transparent', color: active ? 'white' : '#6b7280' })
+
   return (
-    <div className="flex-1 overflow-auto p-8" style={{ background: '#EEF2F7' }}>
-      <div className="max-w-3xl mx-auto space-y-8">
-
-        {/* ── Section 1: Annual Goals ─────────────────────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <Target size={18} className="text-blue-600" />
-                <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>
-                  Annual Goals
-                </h1>
-              </div>
-              <p className="text-sm text-gray-400 ml-7">Shared team goals for the year</p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Year picker */}
-              <div className="flex items-center gap-1 bg-white rounded-xl px-3 py-2 shadow-sm border border-gray-100">
-                {years.map(y => (
-                  <button
-                    key={y}
-                    onClick={() => setYear(y)}
-                    className="text-xs font-medium px-2.5 py-1 rounded-lg transition-all"
-                    style={{
-                      background: year === y ? '#2563EB' : 'transparent',
-                      color: year === y ? 'white' : '#6b7280',
-                    }}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={() => setShowAdd(v => !v)}
-                className="flex items-center gap-2 text-sm font-medium text-white px-4 py-2 rounded-xl transition-colors hover:opacity-90"
-                style={{ background: '#2563EB' }}
-              >
-                <Plus size={15} />
-                Add goal
-              </button>
-            </div>
+    <PageShell>
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Target size={18} className="text-blue-600" />
+            <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>Scorecard</h1>
           </div>
+          <p className="text-sm text-gray-400 ml-7">Annual goals · key metrics · everyone's rocks · individual KPIs</p>
+        </div>
+        <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+          {years.map(y => (
+            <button key={y} onClick={() => setYear(y)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={pill(year === y)}>{y}</button>
+          ))}
+        </div>
+      </div>
 
-          {/* Add form */}
+      <div className="space-y-8">
+        {/* ── Key metrics ─────────────────────────────── */}
+        <section>
+          <SectionLabel right={<span className="text-[11px] text-gray-400">click a number to edit · updated together at the first Monday meeting each month</span>}>
+            Key metrics · {year}
+          </SectionLabel>
+          {metricsError && <p role="alert" className="text-xs text-red-600 mb-2">{metricsError}</p>}
+          {metricsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[1, 2, 3].map(i => <div key={i} className="card h-44 animate-pulse" />)}</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {METRIC_ORDER.map(key => (
+                <MetricCard key={key} metricKey={key} metric={metrics.find(m => m.metric_key === key)} history={historyFor(key)} onUpdate={updateMetric} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── Annual goals ─────────────────────────────── */}
+        <section>
+          <SectionLabel
+            right={
+              <button onClick={() => setShowAdd(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                <Plus size={13} /> Add goal
+              </button>
+            }
+          >
+            Team annual goals · {year}
+          </SectionLabel>
+          {goalsError && <p role="alert" className="text-xs text-red-600 mb-2">{goalsError}</p>}
+
           {showAdd && (
-            <div className="card p-5 mb-4 border border-blue-100">
-              <h4 className="text-sm font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Archivo, sans-serif' }}>
-                New Annual Goal for {year}
-              </h4>
-              <div className="space-y-3">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Goal title…"
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
+            <div className="card p-5 mb-3 border border-blue-100">
+              <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr] gap-3">
+                <input autoFocus type="text" placeholder="Goal title…" value={newTitle} onChange={e => setNewTitle(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                  className="w-full text-sm text-gray-800 placeholder-gray-400 outline-none border border-gray-200 rounded-lg px-3 py-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Description (optional)"
-                  value={newDesc}
-                  onChange={e => setNewDesc(e.target.value)}
-                  className="w-full text-sm text-gray-500 placeholder-gray-400 outline-none border border-gray-200 rounded-lg px-3 py-2"
-                />
-                <select
-                  value={newOwner}
-                  onChange={e => setNewOwner(e.target.value)}
-                  className="w-full text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white"
-                >
+                  className="text-sm text-gray-800 outline-none border border-gray-200 rounded-lg px-3 py-2" />
+                <input type="text" placeholder="Description (optional)" value={newDesc} onChange={e => setNewDesc(e.target.value)}
+                  className="text-sm text-gray-500 outline-none border border-gray-200 rounded-lg px-3 py-2" />
+                <select value={newOwner} onChange={e => setNewOwner(e.target.value)} className="text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white">
                   <option value="">Owner (optional)</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.full_name ?? p.email}
-                      {p.id === loggedInUserId ? ' (me)' : ''}
-                    </option>
-                  ))}
+                  {profiles.map(p => <option key={p.id} value={p.id}>{displayName(p)}{p.id === me.id ? ' (me)' : ''}</option>)}
                 </select>
               </div>
-              <div className="flex gap-2 justify-end mt-4">
-                <button
-                  onClick={() => setShowAdd(false)}
-                  className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAdd}
-                  disabled={!newTitle.trim()}
-                  className="text-xs font-medium text-white px-4 py-1.5 rounded-lg disabled:opacity-40 transition-colors"
-                  style={{ background: '#2563EB' }}
-                >
-                  Save Goal
+              <div className="flex gap-2 justify-end mt-3">
+                <button onClick={() => setShowAdd(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
+                <button onClick={handleAdd} disabled={!newTitle.trim()} className="text-xs font-semibold text-white px-4 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>
+                  Save goal
                 </button>
               </div>
             </div>
           )}
 
-          {/* Goals list — compact scorecard rows */}
           {goalsLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="card h-14 animate-pulse bg-gray-100" />
-              ))}
-            </div>
+            <div className="card h-14 animate-pulse" />
           ) : goals.length === 0 ? (
-            <div className="card p-10 text-center">
-              <Target size={32} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-sm text-gray-400 font-medium">No goals for {year} yet</p>
-              <p className="text-xs text-gray-300 mt-1">Add the team's annual goals above</p>
-            </div>
+            <div className="card p-6 text-sm text-gray-400">No goals for {year} yet.</div>
           ) : (
-            <div className="space-y-2">
+            <div className="card divide-y divide-gray-50">
               {goals.map(goal => {
                 const expanded = expandedId === goal.id
-                const ownerName = goal.owner?.full_name ?? goal.owner?.email?.split('@')[0] ?? null
-                const isCreator = goal.created_by === loggedInUserId
                 return (
-                  <div key={goal.id} className="card px-4 py-3 group">
+                  <div key={goal.id} className="px-4 py-3 group">
                     <div className="flex items-center gap-3">
-                      <p className="flex-1 text-sm font-medium text-gray-900 leading-snug truncate">
-                        {goal.title}
-                      </p>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {ownerName && (
-                          <span
-                            className="text-xs px-2.5 py-0.5 rounded-full font-medium"
-                            style={{ background: '#EEF2F7', color: '#374151' }}
-                          >
-                            {ownerName}
-                          </span>
-                        )}
-
-                        <select
-                          value={goal.status}
-                          onChange={e => updateGoalStatus(goal.id, e.target.value as GoalStatus)}
-                          className={`status-pill ${goalPillClass(goal.status)} cursor-pointer outline-none border-none bg-transparent text-xs font-medium`}
-                        >
-                          {STATUS_OPTIONS.map(s => (
-                            <option key={s.value} value={s.value} className="text-gray-800 bg-white">
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        {goal.description && (
-                          <button
-                            onClick={() => setExpandedId(expanded ? null : goal.id)}
-                            className="text-gray-300 hover:text-gray-500 transition-colors"
-                          >
-                            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                          </button>
-                        )}
-
-                        {isCreator && (
-                          <button
-                            onClick={() => deleteGoal(goal.id)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
+                      {goal.owner && <Avatar profile={goal.owner} size={24} />}
+                      <p className="flex-1 text-sm font-medium text-gray-900 leading-snug">{goal.title}</p>
+                      <StatusPill status={goal.status} options={GOAL_OPTIONS} onChange={s => updateGoalStatus(goal.id, s as GoalStatus)} />
+                      {goal.description && (
+                        <button onClick={() => setExpandedId(expanded ? null : goal.id)} aria-label="Show description" className="text-gray-300 hover:text-gray-500">
+                          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
+                      {goal.created_by === me.id && (
+                        <button onClick={() => deleteGoal(goal.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
-
-                    {goal.description && expanded && (
-                      <p className="text-xs text-gray-500 mt-2 leading-relaxed ml-0">
-                        {goal.description}
-                      </p>
-                    )}
+                    {goal.description && expanded && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{goal.description}</p>}
                   </div>
                 )
               })}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* ── Section 2: Key Metrics Scorecard ────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2 mb-5">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10" />
-              <line x1="12" y1="20" x2="12" y2="4" />
-              <line x1="6" y1="20" x2="6" y2="14" />
-            </svg>
-            <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>
-              Key Metrics — {year}
-            </h2>
+        {/* ── Quarterly rocks, everyone ───────────────── */}
+        <section>
+          <SectionLabel
+            right={
+              <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+                {[1, 2, 3, 4].map(n => (
+                  <button key={n} onClick={() => setQ(n)} className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={pill(q === n)}>Q{n}</button>
+                ))}
+              </div>
+            }
+          >
+            Quarterly rocks · {quarter}
+          </SectionLabel>
+          {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {profiles.map(p => {
+              const mine = rocks.rocks.filter(r => r.user_id === p.id)
+              const editable = canEdit(p.id)
+              return (
+                <div key={p.id} className="card p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Avatar profile={p} size={28} />
+                    <button onClick={() => openDashboard(p.id)} className="text-sm font-semibold text-gray-900 hover:text-blue-600 truncate">{displayName(p)}</button>
+                    <span className="text-xs text-gray-400 ml-auto">{mine.length}/3</span>
+                  </div>
+                  <ul className="space-y-2">
+                    {mine.map(r => (
+                      <li key={r.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 group">
+                        <span className="flex-1 text-sm text-gray-800 leading-snug">{r.title}</span>
+                        <StatusPill status={r.status} small options={editable ? ROCK_OPTIONS : undefined}
+                          onChange={editable ? s => rocks.updateRockStatus(r.id, s as RockStatus) : undefined} />
+                        {editable && (
+                          <button onClick={() => rocks.deleteRock(r.id)} aria-label="Delete rock" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                    {mine.length === 0 && rockFor !== p.id && <li className="text-xs text-gray-400">No rocks for {quarter}.</li>}
+                  </ul>
+                  {editable && mine.length < 3 && (
+                    rockFor === p.id ? (
+                      <div className="flex gap-2 mt-2">
+                        <input autoFocus value={rockTitle} onChange={e => setRockTitle(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveRock(p.id); if (e.key === 'Escape') setRockFor(null) }}
+                          placeholder="New rock…" className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none" />
+                        <button onClick={() => saveRock(p.id)} className="text-xs font-semibold text-white px-3 rounded-lg" style={{ background: '#2563EB' }}>Add</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setRockFor(p.id); setRockTitle('') }} className="mt-2 flex items-center gap-1 text-xs font-semibold text-blue-600">
+                        <Plus size={12} /> Add rock
+                      </button>
+                    )
+                  )}
+                </div>
+              )
+            })}
           </div>
+        </section>
 
-          {metricsLoading ? (
-            <div className="flex gap-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="card h-48 flex-1 animate-pulse bg-gray-100" />
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-4">
-              {METRIC_ORDER.map(key => (
-                <MetricCard
-                  key={key}
-                  metricKey={key}
-                  metric={metrics.find(m => m.metric_key === key)}
-                  onUpdate={updateMetric}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
+        {/* ── KPI summary per person ──────────────────── */}
+        <section>
+          <SectionLabel>Individual KPIs · summary</SectionLabel>
+          <div className="card divide-y divide-gray-50">
+            {profiles.map(p => {
+              const mine = kpis.filter(k => k.user_id === p.id)
+              const myAreas = areas.filter(a => a.user_id === p.id)
+              const count = (s: string) => mine.filter(k => k.status === s).length
+              return (
+                <button key={p.id} onClick={() => openDashboard(p.id)}
+                  className="w-full flex flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-gray-50/60">
+                  <Avatar profile={p} size={28} />
+                  <div className="min-w-[160px] flex-1">
+                    <p className="text-sm font-semibold text-gray-900">{displayName(p)}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {myAreas.length ? myAreas.map(a => a.name).join(' · ') : 'No program areas yet'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {count('on-track') > 0 && <span className="status-pill on-track">{count('on-track')} on track</span>}
+                    {count('in-progress') > 0 && <span className="status-pill in-progress">{count('in-progress')} in progress</span>}
+                    {count('off-track') > 0 && <span className="status-pill off-track">{count('off-track')} off track</span>}
+                    {count('done') > 0 && <span className="status-pill goal-done">{count('done')} done</span>}
+                    {mine.length === 0 && <span className="text-xs text-gray-400">0 KPIs</span>}
+                  </div>
+                  <ArrowRight size={14} className="text-gray-300" />
+                </button>
+              )
+            })}
+          </div>
+        </section>
       </div>
-    </div>
+    </PageShell>
   )
 }

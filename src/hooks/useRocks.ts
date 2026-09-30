@@ -2,52 +2,55 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Rock, RockStatus } from '../types/database'
 
-export function useRocks(userId: string) {
+// Rocks for one quarter (e.g. "Q3 2026"); pass userId to limit to one person.
+export function useRocks(quarter: string, userId?: string) {
   const [rocks, setRocks] = useState<Rock[]>([])
   const [loading, setLoading] = useState(true)
-
-  const currentQuarter = (() => {
-    const now = new Date()
-    const q = Math.ceil((now.getMonth() + 1) / 3)
-    return `Q${q} ${now.getFullYear()}`
-  })()
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!userId) return
-    fetch()
-  }, [userId])
+    fetchRocks()
+  }, [quarter, userId])
 
-  async function fetch() {
+  async function fetchRocks() {
     setLoading(true)
-    const { data } = await supabase
-      .from('rocks')
-      .select('*, profiles(*)')
-      .eq('user_id', userId)
-      .eq('quarter', currentQuarter)
-      .order('created_at', { ascending: true })
-    setRocks(data ?? [])
+    let q = supabase.from('rocks').select('*').eq('quarter', quarter).order('created_at', { ascending: true })
+    if (userId) q = q.eq('user_id', userId)
+    const { data } = await q
+    setRocks((data as Rock[]) ?? [])
     setLoading(false)
   }
 
-  async function addRock(title: string, description?: string) {
-    if (rocks.length >= 3) return
+  async function addRock(ownerId: string, title: string) {
+    setError(null)
     const { data, error } = await supabase
       .from('rocks')
-      .insert({ user_id: userId, title, description: description ?? null, status: 'on-track', quarter: currentQuarter })
-      .select('*, profiles(*)')
+      .insert({ user_id: ownerId, title, status: 'on-track', quarter })
+      .select('*')
       .single()
-    if (!error && data) setRocks(r => [...r, data])
+    if (error) setError(error.message.includes('Maximum 3') ? 'Each person can have up to 3 rocks per quarter.' : error.message)
+    else if (data) setRocks(r => [...r, data as Rock])
   }
 
   async function updateRockStatus(id: string, status: RockStatus) {
-    await supabase.from('rocks').update({ status }).eq('id', id)
+    const before = rocks
     setRocks(r => r.map(rock => rock.id === id ? { ...rock, status } : rock))
+    const res = await supabase.from('rocks').update({ status }).eq('id', id).select('id')
+    if (res.error || !res.data?.length) {
+      setRocks(before)
+      setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this rock.")
+    } else setError(null)
   }
 
   async function deleteRock(id: string) {
-    await supabase.from('rocks').delete().eq('id', id)
+    const before = rocks
     setRocks(r => r.filter(rock => rock.id !== id))
+    const res = await supabase.from('rocks').delete().eq('id', id).select('id')
+    if (res.error || !res.data?.length) {
+      setRocks(before)
+      setError(res.error ? "Couldn't delete. Check your connection and try again." : "Couldn't delete: you don't have permission to edit this rock.")
+    } else setError(null)
   }
 
-  return { rocks, loading, currentQuarter, addRock, updateRockStatus, deleteRock, refetch: fetch }
+  return { rocks, loading, error, addRock, updateRockStatus, deleteRock, refetch: fetchRocks }
 }

@@ -1,7 +1,7 @@
 export type RockStatus = 'on-track' | 'off-track' | 'done'
-export type TaskFrequency = 'daily' | 'weekly' | 'monthly'
 export type TeamTaskStatus = 'todo' | 'in-progress' | 'done'
 export type GoalStatus = 'not-started' | 'in-progress' | 'on-track' | 'done'
+export type KpiStatus = 'not-started' | 'in-progress' | 'on-track' | 'off-track' | 'done'
 
 export interface Profile {
   id: string
@@ -9,6 +9,7 @@ export interface Profile {
   full_name: string | null
   avatar_url: string | null
   role: string | null
+  manager_id: string | null
   created_at: string
 }
 
@@ -21,18 +22,6 @@ export interface Rock {
   quarter: string
   due_date: string | null
   created_at: string
-  profiles?: Profile
-}
-
-export interface Task {
-  id: string
-  user_id: string
-  title: string
-  description: string | null
-  frequency: TaskFrequency
-  completed: boolean
-  due_date: string | null
-  created_at: string
 }
 
 export interface TeamTask {
@@ -43,9 +32,15 @@ export interface TeamTask {
   description: string | null
   status: TeamTaskStatus
   due_date: string | null
+  kpi_id: string | null
+  rock_id: string | null
+  assigned_in_meeting: boolean
+  source: 'manual' | 'monday'
+  monday_item_id: string | null
+  completed_at: string | null
+  archived_month: string | null
+  needs_discussion: boolean
   created_at: string
-  creator?: Profile
-  assignee?: Profile
 }
 
 export interface AnnualGoal {
@@ -73,55 +68,66 @@ export interface ScorecardMetric {
   updated_at: string
 }
 
-export interface Decision {
+export interface MetricHistory {
   id: string
-  title: string
-  context: string | null
-  decided_by: string | null
-  decided_at: string
-  created_by: string
-  created_at: string
-  decider?: Profile | null
+  year: number
+  metric_key: MetricKey
+  actual: number | null
+  target: number | null
+  edited_by: string | null
+  edited_at: string
 }
 
-export interface MeetingTopic {
+export interface KpiArea {
   id: string
-  text: string
-  added_by: string | null
-  done: boolean
+  user_id: string
+  name: string
+  monday_url: string | null
   sort_order: number
   created_at: string
-  adder?: Profile | null
 }
 
-export interface Database {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile
-        Insert: Omit<Profile, 'created_at'>
-        Update: Partial<Omit<Profile, 'id' | 'created_at'>>
-      }
-      rocks: {
-        Row: Rock
-        Insert: Omit<Rock, 'id' | 'created_at'>
-        Update: Partial<Omit<Rock, 'id' | 'created_at'>>
-      }
-      tasks: {
-        Row: Task
-        Insert: Omit<Task, 'id' | 'created_at'>
-        Update: Partial<Omit<Task, 'id' | 'created_at'>>
-      }
-      team_tasks: {
-        Row: TeamTask
-        Insert: Omit<TeamTask, 'id' | 'created_at'>
-        Update: Partial<Omit<TeamTask, 'id' | 'created_at'>>
-      }
-      annual_goals: {
-        Row: AnnualGoal
-        Insert: Omit<AnnualGoal, 'id' | 'created_at' | 'owner' | 'creator'>
-        Update: Partial<Omit<AnnualGoal, 'id' | 'created_at' | 'owner' | 'creator'>>
-      }
-    }
-  }
+export interface Kpi {
+  id: string
+  area_id: string
+  user_id: string
+  title: string
+  target: number | null
+  current: number | null
+  status: KpiStatus
+  sort_order: number
+  updated_by: string | null
+  updated_at: string
+  created_at: string
+}
+
+export interface Notification {
+  id: string
+  user_id: string
+  actor_id: string | null
+  task_id: string | null
+  kind: string
+  message: string
+  read_at: string | null
+  created_at: string
+}
+
+export interface EowSubmission {
+  id: string
+  user_id: string
+  week_of: string
+  answers: Record<string, string>
+  submitted_at: string
+  updated_at: string
+}
+
+export interface MondayConnection {
+  user_id: string
+  board_id: string
+  board_name: string | null
+  board_url: string | null
+  column_map: Record<string, string>
+  webhook_ids: string[]
+  from_template: boolean
+  created_at: string
 }

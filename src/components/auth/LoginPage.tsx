@@ -5,8 +5,9 @@ interface Props {
 
 export function LoginPage({ onSignIn, loading }: Props) {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#EEF2F7' }}>
-      <div className="w-full max-w-md mx-4">
+    // w-full: #root is a flex row, so without it this wrapper shrinks and hugs the left edge
+    <div className="w-full min-h-dvh flex items-center justify-center px-4" style={{ background: '#EEF2F7' }}>
+      <div className="w-full max-w-md">
         {/* Logo / Brand */}
         <div className="text-center mb-10">
           <div

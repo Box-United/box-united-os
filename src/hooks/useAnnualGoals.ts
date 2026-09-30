@@ -5,6 +5,16 @@ import type { AnnualGoal, GoalStatus } from '../types/database'
 export function useAnnualGoals(year: number, loggedInUserId: string) {
   const [goals, setGoals] = useState<AnnualGoal[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  function failed(res: { error: unknown; data: unknown[] | null }) {
+    if (res.error || !res.data?.length) {
+      setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this goal.")
+      return true
+    }
+    setError(null)
+    return false
+  }
 
   useEffect(() => {
     fetchGoals()
@@ -34,23 +44,30 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
       })
       .select('*, owner:profiles!owner_id(*), creator:profiles!created_by(*)')
       .single()
-    if (!error && data) setGoals(g => [...g, data as AnnualGoal])
+    if (error || !data) setError("Couldn't save the goal. Check your connection and try again.")
+    else {
+      setError(null)
+      setGoals(g => [...g, data as AnnualGoal])
+    }
   }
 
   async function updateGoalStatus(id: string, status: GoalStatus) {
-    await supabase.from('annual_goals').update({ status }).eq('id', id)
+    const before = goals
     setGoals(g => g.map(goal => goal.id === id ? { ...goal, status } : goal))
+    if (failed(await supabase.from('annual_goals').update({ status }).eq('id', id).select('id'))) setGoals(before)
   }
 
   async function updateGoal(id: string, updates: { title?: string; description?: string | null; owner_id?: string | null }) {
-    await supabase.from('annual_goals').update(updates).eq('id', id)
+    const before = goals
     setGoals(g => g.map(goal => goal.id === id ? { ...goal, ...updates } : goal))
+    if (failed(await supabase.from('annual_goals').update(updates).eq('id', id).select('id'))) setGoals(before)
   }
 
   async function deleteGoal(id: string) {
-    await supabase.from('annual_goals').delete().eq('id', id)
+    const before = goals
     setGoals(g => g.filter(goal => goal.id !== id))
+    if (failed(await supabase.from('annual_goals').delete().eq('id', id).select('id'))) setGoals(before)
   }
 
-  return { goals, loading, addGoal, updateGoalStatus, updateGoal, deleteGoal, refetch: fetchGoals }
+  return { goals, loading, error, addGoal, updateGoalStatus, updateGoal, deleteGoal, refetch: fetchGoals }
 }
