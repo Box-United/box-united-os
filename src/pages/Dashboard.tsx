@@ -1,18 +1,13 @@
-import { useState } from 'react'
 import { Eye, Pencil } from 'lucide-react'
 import { PageShell } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
 import { NotificationBell } from '../components/dashboard/NotificationBell'
-import { GoalsAndRocks } from '../components/dashboard/GoalsAndRocks'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
-import { UpNext } from '../components/dashboard/UpNext'
-import { MondayConnectCard } from '../components/dashboard/MondayConnectCard'
-import { useRocks } from '../hooks/useRocks'
+import { IndividualGoals } from '../components/dashboard/IndividualGoals'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
-import { useMonday } from '../hooks/useMonday'
 import type { useNotifications } from '../hooks/useNotifications'
-import { useTeam, displayName, currentQuarter, quarterLabel } from '../lib/team'
+import { useTeam, displayName } from '../lib/team'
 
 interface Props {
   viewingUserId: string
@@ -29,14 +24,8 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
   const isOwn = person.id === me.id
   const editable = canEdit(person.id)
 
-  const now = currentQuarter()
-  const [q, setQ] = useState(now.q)
-  const quarter = quarterLabel(q, now.year)
-
-  const rocks = useRocks(quarter, person.id)
   const kpis = useKpis(person.id)
   const { tasks } = useTeamTasks()
-  const monday = useMonday(person.id)
 
   return (
     <PageShell>
@@ -58,34 +47,14 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
           <h1 className="text-xl font-bold text-gray-900 truncate" style={{ fontFamily: 'Archivo, sans-serif' }}>
             {displayName(person)}
           </h1>
-          <p className="text-sm text-gray-400">
-            {(person.role && ROLE_LABELS[person.role]) || 'Team member'} · {quarter}
-          </p>
-        </div>
-        <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100" role="tablist" aria-label="Quarter">
-          {[1, 2, 3, 4].map(n => (
-            <button
-              key={n}
-              role="tab"
-              aria-selected={q === n}
-              onClick={() => setQ(n)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-              style={{ background: q === n ? '#2563EB' : 'transparent', color: q === n ? 'white' : '#6b7280' }}
-            >
-              Q{n}
-            </button>
-          ))}
+          <p className="text-sm text-gray-400">{(person.role && ROLE_LABELS[person.role]) || 'Team member'}</p>
         </div>
         {isOwn && <NotificationBell notifications={notifications} />}
       </div>
 
-      {isOwn && !monday.loading && !monday.connection && <MondayConnectCard monday={monday} />}
-
-      <GoalsAndRocks personId={person.id} quarter={quarter} rocks={rocks} editable={editable} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5 mt-5">
-        <KpiPanel kpiState={kpis} tasks={tasks} editable={editable} personId={person.id} fallbackMondayUrl={monday.connection?.board_url ?? null} />
-        <UpNext personId={person.id} tasks={tasks} kpis={kpis.kpis} rocks={rocks.rocks} />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
+        <KpiPanel kpiState={kpis} tasks={tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} />
+        <IndividualGoals personId={person.id} editable={editable} />
       </div>
     </PageShell>
   )

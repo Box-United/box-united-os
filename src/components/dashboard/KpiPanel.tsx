@@ -24,26 +24,52 @@ function isUrl(s: string) {
 }
 
 export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUrl }: Props) {
-  const { areas, kpis, loading, error, addArea, deleteArea } = kpiState
-  const [addingArea, setAddingArea] = useState(false)
+  const { areas, kpis, loading, error, addArea, updateArea, addKpi, deleteArea } = kpiState
+  const [adding, setAdding] = useState(false)
+  const [kpiTitle, setKpiTitle] = useState('')
   const [areaName, setAreaName] = useState('')
   const [areaUrl, setAreaUrl] = useState('')
+  const [target, setTarget] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const urlOk = areaUrl.trim() === '' ? false : isUrl(areaUrl.trim())
+  const existing = areas.find(a => a.name.trim().toLowerCase() === areaName.trim().toLowerCase())
+  const urlOk = isUrl(areaUrl.trim())
+  const canSave = kpiTitle.trim() && areaName.trim() && urlOk && !saving
 
-  function saveArea() {
-    if (!areaName.trim() || !urlOk) return
-    addArea(personId, areaName.trim(), areaUrl.trim())
+  // Picking an existing program area fills in its Monday board link
+  function onAreaChange(v: string) {
+    setAreaName(v)
+    const match = areas.find(a => a.name.trim().toLowerCase() === v.trim().toLowerCase())
+    if (match?.monday_url && !areaUrl.trim()) setAreaUrl(match.monday_url)
+  }
+
+  function reset() {
+    setKpiTitle('')
     setAreaName('')
     setAreaUrl('')
-    setAddingArea(false)
+    setTarget('')
+    setAdding(false)
+  }
+
+  async function save() {
+    if (!canSave) return
+    setSaving(true)
+    let area = existing ?? null
+    if (area && area.monday_url !== areaUrl.trim()) await updateArea(area.id, { monday_url: areaUrl.trim() })
+    if (!area) area = await addArea(personId, areaName.trim(), areaUrl.trim())
+    if (area) {
+      const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
+      await addKpi({ ...area, monday_url: areaUrl.trim() }, kpiTitle.trim(), t != null && !isNaN(t) ? t : null)
+      reset()
+    }
+    setSaving(false)
   }
 
   return (
     <section className="card p-5 self-start">
       <SectionLabel
         right={editable && (
-          <button onClick={() => setAddingArea(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+          <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
             <Plus size={13} /> Add program area
           </button>
         )}
@@ -53,27 +79,43 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
 
       {error && <SaveError text={error} onDismiss={kpiState.clearError} />}
 
-      {addingArea && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 mb-4 space-y-2">
-          <input
-            autoFocus
-            value={areaName}
-            onChange={e => setAreaName(e.target.value)}
-            placeholder="Program area (e.g. Programs, Operations, Development)"
-            className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          />
-          <input
-            value={areaUrl}
-            onChange={e => setAreaUrl(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveArea()}
-            placeholder="Monday board link (required) — https://boxunited.monday.com/boards/…"
-            className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          />
-          {areaUrl.trim() !== '' && !urlOk && <p className="text-xs text-red-600">Paste the full board link, starting with https://</p>}
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setAddingArea(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
-            <button onClick={saveArea} disabled={!areaName.trim() || !urlOk} className="text-xs font-semibold text-white px-4 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>
-              Save area
+      {adding && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="block md:col-span-2">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">KPI</span>
+              <input autoFocus value={kpiTitle} onChange={e => setKpiTitle(e.target.value)}
+                placeholder="e.g. 30 schools submit surveys"
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Program area it's tied to</span>
+              <input value={areaName} onChange={e => onAreaChange(e.target.value)} list={`areas-${personId}`}
+                placeholder="e.g. Programs, Operations, Development"
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
+              <datalist id={`areas-${personId}`}>
+                {areas.map(a => <option key={a.id} value={a.name} />)}
+              </datalist>
+              {areaName.trim() && <span className="block text-[11px] text-gray-400 mt-1">{existing ? 'Adds to this existing area' : 'Creates a new program area'}</span>}
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Target number <span className="font-normal text-gray-400">(optional)</span></span>
+              <input value={target} onChange={e => setTarget(e.target.value)} inputMode="decimal"
+                placeholder="e.g. 30"
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Link to the Monday board</span>
+              <input value={areaUrl} onChange={e => setAreaUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
+                placeholder="https://boxunited.monday.com/boards/…"
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
+              {areaUrl.trim() !== '' && !urlOk && <span className="block text-xs text-red-600 mt-1">Paste the full board link, starting with https://</span>}
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <button onClick={reset} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+            <button onClick={save} disabled={!canSave} className="text-xs font-semibold text-white px-4 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>
+              {saving ? 'Saving…' : 'Save KPI'}
             </button>
           </div>
         </div>
@@ -83,7 +125,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
         <div className="space-y-2">{[1, 2].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
       ) : areas.length === 0 ? (
         <p className="text-sm text-gray-400 py-2">
-          {editable ? 'Add a program area, link its Monday board, then add the KPIs you own there.' : 'No KPIs set up yet.'}
+          {editable ? 'Use "Add program area" to add a KPI, the program area it belongs to, and that area\'s Monday board.' : 'No KPIs set up yet.'}
         </p>
       ) : (
         <div className="space-y-5">
