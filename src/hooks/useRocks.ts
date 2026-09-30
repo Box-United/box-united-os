@@ -33,13 +33,23 @@ export function useRocks(quarter: string, userId?: string) {
   }
 
   async function updateRockStatus(id: string, status: RockStatus) {
+    const before = rocks
     setRocks(r => r.map(rock => rock.id === id ? { ...rock, status } : rock))
-    await supabase.from('rocks').update({ status }).eq('id', id)
+    const res = await supabase.from('rocks').update({ status }).eq('id', id).select('id')
+    if (res.error || !res.data?.length) {
+      setRocks(before)
+      setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this rock.")
+    } else setError(null)
   }
 
   async function deleteRock(id: string) {
+    const before = rocks
     setRocks(r => r.filter(rock => rock.id !== id))
-    await supabase.from('rocks').delete().eq('id', id)
+    const res = await supabase.from('rocks').delete().eq('id', id).select('id')
+    if (res.error || !res.data?.length) {
+      setRocks(before)
+      setError(res.error ? "Couldn't delete. Check your connection and try again." : "Couldn't delete: you don't have permission to edit this rock.")
+    } else setError(null)
   }
 
   return { rocks, loading, error, addRock, updateRockStatus, deleteRock, refetch: fetchRocks }

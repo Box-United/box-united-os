@@ -170,8 +170,8 @@ export function Scorecard() {
   const [q, setQ] = useState(now.q)
   const quarter = quarterLabel(q, year)
 
-  const { goals, loading: goalsLoading, addGoal, updateGoalStatus, deleteGoal } = useAnnualGoals(year, me.id)
-  const { metrics, loading: metricsLoading, updateMetric, historyFor } = useScorecardMetrics(year, me.id)
+  const { goals, loading: goalsLoading, error: goalsError, addGoal, updateGoalStatus, deleteGoal } = useAnnualGoals(year, me.id)
+  const { metrics, loading: metricsLoading, error: metricsError, updateMetric, historyFor } = useScorecardMetrics(year, me.id)
   const rocks = useRocks(quarter)
   const { areas, kpis } = useKpis()
 
@@ -226,6 +226,7 @@ export function Scorecard() {
           <SectionLabel right={<span className="text-[11px] text-gray-400">click a number to edit · updated together at the first Monday meeting each month</span>}>
             Key metrics · {year}
           </SectionLabel>
+          {metricsError && <p role="alert" className="text-xs text-red-600 mb-2">{metricsError}</p>}
           {metricsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[1, 2, 3].map(i => <div key={i} className="card h-44 animate-pulse" />)}</div>
           ) : (
@@ -248,6 +249,7 @@ export function Scorecard() {
           >
             Team annual goals · {year}
           </SectionLabel>
+          {goalsError && <p role="alert" className="text-xs text-red-600 mb-2">{goalsError}</p>}
 
           {showAdd && (
             <div className="card p-5 mb-3 border border-blue-100">
@@ -317,7 +319,7 @@ export function Scorecard() {
           >
             Quarterly rocks · {quarter}
           </SectionLabel>
-          {rocks.error && <p className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+          {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {profiles.map(p => {
               const mine = rocks.rocks.filter(r => r.user_id === p.id)

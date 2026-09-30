@@ -7,6 +7,17 @@ export function useKpis(userId?: string) {
   const [areas, setAreas] = useState<KpiArea[]>([])
   const [kpis, setKpis] = useState<Kpi[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Rows back from a write; zero rows means the database refused it (e.g. no permission)
+  function failed(res: { error: unknown; data: unknown[] | null }, msg = "Couldn't save. Check your connection and try again.") {
+    if (res.error || !res.data?.length) {
+      setError(res.error ? msg : "Couldn't save: you don't have permission to edit this.")
+      return true
+    }
+    setError(null)
+    return false
+  }
 
   useEffect(() => {
     fetchAll()
@@ -27,27 +38,31 @@ export function useKpis(userId?: string) {
   }
 
   async function addArea(ownerId: string, name: string, mondayUrl: string | null) {
-    const { data } = await supabase
+    const res = await supabase
       .from('kpi_areas')
       .insert({ user_id: ownerId, name, monday_url: mondayUrl, sort_order: areas.length })
       .select('*')
-      .single()
-    if (data) setAreas(a => [...a, data as KpiArea])
+    if (!failed(res)) setAreas(a => [...a, res.data![0] as KpiArea])
   }
 
   async function updateArea(id: string, patch: Partial<Pick<KpiArea, 'name' | 'monday_url'>>) {
+    const before = areas
     setAreas(a => a.map(x => x.id === id ? { ...x, ...patch } : x))
-    await supabase.from('kpi_areas').update(patch).eq('id', id)
+    if (failed(await supabase.from('kpi_areas').update(patch).eq('id', id).select('id'))) setAreas(before)
   }
 
   async function deleteArea(id: string) {
+    const [beforeA, beforeK] = [areas, kpis]
     setAreas(a => a.filter(x => x.id !== id))
     setKpis(k => k.filter(x => x.area_id !== id))
-    await supabase.from('kpi_areas').delete().eq('id', id)
+    if (failed(await supabase.from('kpi_areas').delete().eq('id', id).select('id'))) {
+      setAreas(beforeA)
+      setKpis(beforeK)
+    }
   }
 
   async function addKpi(area: KpiArea, title: string, target: number | null) {
-    const { data } = await supabase
+    const res = await supabase
       .from('kpis')
       .insert({
         area_id: area.id,
@@ -59,20 +74,21 @@ export function useKpis(userId?: string) {
         sort_order: kpis.filter(k => k.area_id === area.id).length,
       })
       .select('*')
-      .single()
-    if (data) setKpis(k => [...k, data as Kpi])
+    if (!failed(res)) setKpis(k => [...k, res.data![0] as Kpi])
   }
 
   async function updateKpi(id: string, patch: Partial<Pick<Kpi, 'title' | 'target' | 'current' | 'status'>>, editorId: string) {
     const full = { ...patch, updated_by: editorId, updated_at: new Date().toISOString() }
+    const before = kpis
     setKpis(k => k.map(x => x.id === id ? { ...x, ...full } : x))
-    await supabase.from('kpis').update(full).eq('id', id)
+    if (failed(await supabase.from('kpis').update(full).eq('id', id).select('id'))) setKpis(before)
   }
 
   async function deleteKpi(id: string) {
+    const before = kpis
     setKpis(k => k.filter(x => x.id !== id))
-    await supabase.from('kpis').delete().eq('id', id)
+    if (failed(await supabase.from('kpis').delete().eq('id', id).select('id'))) setKpis(before)
   }
 
-  return { areas, kpis, loading, addArea, updateArea, deleteArea, addKpi, updateKpi, deleteKpi, refetch: fetchAll }
+  return { areas, kpis, loading, error, clearError: () => setError(null), addArea, updateArea, deleteArea, addKpi, updateKpi, deleteKpi, refetch: fetchAll }
 }

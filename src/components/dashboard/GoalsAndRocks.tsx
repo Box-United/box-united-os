@@ -58,7 +58,7 @@ export function GoalsAndRocks({ personId, quarter, rocks, editable }: Props) {
           </button>
         </div>
       )}
-      {rocks.error && <p className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+      {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {goalsLoading ? (

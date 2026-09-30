@@ -8,6 +8,7 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
   const [metrics, setMetrics] = useState<ScorecardMetric[]>([])
   const [history, setHistory] = useState<MetricHistory[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchMetrics()
@@ -41,7 +42,12 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
       .select()
       .single()
 
-    if (!error && data) {
+    if (error || !data) {
+      setError("Couldn't save that number. Check your connection and try again.")
+      return
+    }
+    setError(null)
+    {
       const updated = data as ScorecardMetric
       setMetrics(m => {
         const exists = m.some(x => x.metric_key === key)
@@ -58,5 +64,5 @@ export function useScorecardMetrics(year: number, loggedInUserId: string) {
 
   const historyFor = (key: MetricKey) => history.filter(h => h.metric_key === key)
 
-  return { metrics, loading, updateMetric, historyFor, refetch: fetchMetrics }
+  return { metrics, loading, error, updateMetric, historyFor, refetch: fetchMetrics }
 }
