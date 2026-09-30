@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, ClipboardCheck } from 'lucide-react'
 import { useEow } from '../hooks/useEow'
-import { EOW_QUESTIONS } from '../config/eowQuestions'
-import { useTeam, weekOf, shortDate, firstName } from '../lib/team'
+import { EOW_QUESTIONS, EOW_FORM_TITLE, EOW_FORM_DESCRIPTION } from '../config/eowQuestions'
+import { useRocks } from '../hooks/useRocks'
+import { useTeam, weekOf, shortDate, firstName, currentQuarter, quarterLabel } from '../lib/team'
+import { StatusPill } from '../components/ui/StatusPill'
 import { PageShell, PageHeader, SectionLabel } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
 
@@ -37,6 +39,8 @@ export function EowStatus() {
   const { submissions, loading, save } = useEow()
   const week = weekOf()
   const mine = submissions.find(s => s.user_id === me.id && s.week_of === week)
+  const cq = currentQuarter()
+  const { rocks } = useRocks(quarterLabel(cq.q, cq.year), me.id)
 
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -66,14 +70,17 @@ export function EowStatus() {
       <PageHeader
         icon={<ClipboardCheck size={18} className="text-blue-600" />}
         title="End-of-Week Status"
-        subtitle="One check-in per person per week. Everyone can read them; only you can edit yours."
+        subtitle={`${EOW_FORM_TITLE} · ${EOW_FORM_DESCRIPTION}. One per person per week; only you can edit yours.`}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
         <form onSubmit={submit} className="card p-5 md:p-6 self-start">
           <SectionLabel right={mine && <span className="text-[11px] text-green-700 font-semibold">Submitted {shortDate(mine.submitted_at)}</span>}>
-            This week's check-in · {weekLabel(week)}
+            {EOW_FORM_TITLE} · {weekLabel(week)}
           </SectionLabel>
+          <p className="text-xs text-gray-400 -mt-1 mb-4">
+            Today: {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} · <span className="text-red-500">*</span> required
+          </p>
           <div className="space-y-5">
             {EOW_QUESTIONS.map(q => (
               <div key={q.id}>
@@ -81,6 +88,15 @@ export function EowStatus() {
                   {q.label}{q.required && <span className="text-red-500"> *</span>}
                 </label>
                 {q.help && <p className="text-xs text-gray-400 mb-1.5">{q.help}</p>}
+                {q.showRocks && rocks.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {rocks.map(r => (
+                      <span key={r.id} className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-full pl-2.5 pr-1 py-0.5">
+                        {r.title} <StatusPill status={r.status} small />
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <AutoTextarea id={`eow-${q.id}`} value={answers[q.id] ?? ''} onChange={v => setAnswers(a => ({ ...a, [q.id]: v }))} />
               </div>
             ))}
