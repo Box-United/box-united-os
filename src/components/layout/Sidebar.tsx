@@ -17,8 +17,8 @@ interface Props {
 
 const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'My Dashboard', icon: LayoutDashboard },
-  { id: 'team',      label: 'Team Board',   icon: Users },
   { id: 'scorecard', label: 'Scorecard',    icon: Target },
+  { id: 'team',      label: 'Team Board',   icon: Users },
   { id: 'eow',       label: 'EOW Status',   icon: ClipboardCheck },
 ]
 

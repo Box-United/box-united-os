@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, Archive, ExternalLink, LayoutGrid, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
 import { useKpis } from '../../hooks/useKpis'
 import { useRocks } from '../../hooks/useRocks'
@@ -7,6 +7,7 @@ import type { Kpi, Rock, TeamTask } from '../../types/database'
 import { useTeam, currentQuarter, quarterLabel, firstName, monthKey, monthLabel, shortDate } from '../../lib/team'
 import { PageShell, PageHeader } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
+import { MONDAY_TEAM_SECTION } from '../../config/mondayTeamSection'
 
 const CURRENT = 'current'
 
@@ -143,6 +144,8 @@ export function TeamBoard() {
           {archiveMsg && <span className="text-gray-400">{archiveMsg}</span>}
         </div>
       )}
+
+      <MondaySection />
     </PageShell>
   )
 }
@@ -352,6 +355,45 @@ function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: 
         )}
       </td>
     </tr>
+  )
+}
+
+// The part of Monday.com the whole team works from. Alexandra picks it; until then this is a placeholder.
+function MondaySection() {
+  const s = MONDAY_TEAM_SECTION
+  const ready = Boolean(s.title && s.url)
+  return (
+    <section
+      className="mt-8 rounded-[14px] p-5 md:p-6"
+      style={ready
+        ? { background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,.07), 0 4px 16px rgba(0,0,0,.05)' }
+        : { border: '2px dashed #cbd5e1', background: 'rgba(255,255,255,0.5)' }}
+    >
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#EEF2F7', color: '#2563EB' }}>
+          <LayoutGrid size={18} />
+        </div>
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>
+              {ready ? s.title : 'Monday.com'}
+            </h2>
+            {!ready && <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">Coming soon</span>}
+          </div>
+          <p className="text-sm text-gray-500 mt-1">
+            {ready
+              ? s.description ?? 'Shared Monday.com section for the team.'
+              : `A section of Monday.com will live here for the whole team. ${s.owner.split(' ')[0]} is deciding which board or group it will be.`}
+          </p>
+        </div>
+        {ready && (
+          <a href={s.url!} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-xl hover:opacity-90" style={{ background: '#2563EB' }}>
+            Open in Monday <ExternalLink size={14} />
+          </a>
+        )}
+      </div>
+    </section>
   )
 }
 
