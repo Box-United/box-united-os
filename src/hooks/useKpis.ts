@@ -42,7 +42,10 @@ export function useKpis(userId?: string) {
       .from('kpi_areas')
       .insert({ user_id: ownerId, name, monday_url: mondayUrl, sort_order: areas.length })
       .select('*')
-    if (!failed(res)) setAreas(a => [...a, res.data![0] as KpiArea])
+    if (failed(res)) return null
+    const area = res.data![0] as KpiArea
+    setAreas(a => [...a, area])
+    return area
   }
 
   async function updateArea(id: string, patch: Partial<Pick<KpiArea, 'name' | 'monday_url'>>) {

@@ -1,8 +1,8 @@
-import { LayoutDashboard, Users, LogOut, Dumbbell, Target, ClipboardCheck, X } from 'lucide-react'
+import { LayoutDashboard, Users, LogOut, Dumbbell, Target, ClipboardCheck, FileText, X } from 'lucide-react'
 import { useTeam, displayName } from '../../lib/team'
 import { Avatar } from '../ui/Avatar'
 
-export type Page = 'dashboard' | 'team' | 'scorecard' | 'eow'
+export type Page = 'dashboard' | 'team' | 'scorecard' | 'eow' | 'reviews'
 
 interface Props {
   activePage: Page
@@ -20,6 +20,7 @@ const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'scorecard', label: 'Scorecard',    icon: Target },
   { id: 'team',      label: 'Team Board',   icon: Users },
   { id: 'eow',       label: 'EOW Status',   icon: ClipboardCheck },
+  { id: 'reviews',   label: 'Performance Reviews', icon: FileText },
 ]
 
 // Shown until Claire & Alexandra have signed in once

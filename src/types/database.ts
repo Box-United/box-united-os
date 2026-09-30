@@ -131,3 +131,45 @@ export interface MondayConnection {
   from_template: boolean
   created_at: string
 }
+
+export interface IndividualGoal {
+  id: string
+  user_id: string
+  year: number
+  title: string
+  status: KpiStatus
+  sort_order: number
+  created_at: string
+}
+
+export type ReviewPeriod = 'mid_year' | 'end_of_year'
+
+export interface PerformanceReview {
+  id: string
+  employee_id: string
+  year: number
+  period: ReviewPeriod
+  reviewer_id: string | null
+  self_submitted_at: string | null
+  shared_at: string | null
+  employee_signed_at: string | null
+  reviewer_signed_at: string | null
+  snapshot: ReviewItem[] | null
+  created_at: string
+}
+
+// One goal / KPI / rock being reviewed; `key` is "<kind>:<id>"
+export interface ReviewItem {
+  key: string
+  kind: 'goal' | 'kpi' | 'rock'
+  title: string
+  status: string
+  detail?: string
+}
+
+export interface ReviewPart {
+  review_id: string
+  answers: Record<string, string>
+  items: Record<string, string>
+  updated_at: string
+}

@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard'
 import { TeamBoard } from './components/team/TeamBoard'
 import { Scorecard } from './pages/AnnualGoals'
 import { EowStatus } from './pages/EowStatus'
+import { PerformanceReviews } from './pages/PerformanceReviews'
 import { supabase } from './lib/supabase'
 import { TeamContext, makeCanEdit, type TeamContextValue } from './lib/team'
 import type { Profile } from './types/database'
@@ -17,6 +18,7 @@ const PATHS: Record<Page, string> = {
   team: 'team-board',
   scorecard: 'scorecard',
   eow: 'eow-status',
+  reviews: 'performance-reviews',
 }
 
 // GitHub Pages serves one index.html, so pages live in the hash: #/eow-status
@@ -127,8 +129,10 @@ export default function App() {
             <TeamBoard />
           ) : page === 'scorecard' ? (
             <Scorecard />
-          ) : (
+          ) : page === 'eow' ? (
             <EowStatus />
+          ) : (
+            <PerformanceReviews />
           )}
         </main>
       </div>

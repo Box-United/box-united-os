@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { AutoTextarea } from '../components/ui/AutoTextarea'
 import { ChevronDown, ChevronUp, ClipboardCheck } from 'lucide-react'
 import { useEow } from '../hooks/useEow'
 import { useEowDraft } from '../hooks/useEowDraft'
@@ -8,28 +9,6 @@ import { useTeam, weekOf, shortDate, firstName, currentQuarter, quarterLabel } f
 import { StatusPill } from '../components/ui/StatusPill'
 import { PageShell, PageHeader, SectionLabel } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
-
-function AutoTextarea({ id, value, onChange, disabled }: { id: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [value])
-  return (
-    <textarea
-      id={id}
-      ref={ref}
-      rows={4}
-      value={value}
-      disabled={disabled}
-      onChange={e => onChange(e.target.value)}
-      placeholder="Long answer…"
-      className="w-full min-h-[104px] resize-none text-sm text-gray-800 leading-relaxed border border-gray-200 rounded-xl px-3.5 py-3 outline-none focus:border-blue-400 bg-white disabled:bg-gray-50"
-    />
-  )
-}
 
 function weekLabel(week: string) {
   return `Week of ${shortDate(week)}`
