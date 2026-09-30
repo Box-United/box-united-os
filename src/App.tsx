@@ -26,7 +26,7 @@ function pageFromHash(): Page {
 }
 
 export default function App() {
-  const { user, profile, loading, signInWithGoogle, signOut } = useAuth()
+  const { user, profile, loading, signInError, signInWithGoogle, signOut } = useAuth()
   const [page, setPage] = useState<Page>(pageFromHash)
   const [viewingUserId, setViewingUserId] = useState<string | null>(null)
   const [allProfiles, setAllProfiles] = useState<Profile[]>([])
@@ -71,7 +71,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onSignIn={signInWithGoogle} />
+    return <LoginPage onSignIn={signInWithGoogle} error={signInError} />
   }
 
   if (!team) {
