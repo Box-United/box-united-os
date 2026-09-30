@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, ClipboardCheck } from 'lucide-react'
 import { useEow } from '../hooks/useEow'
+import { useEowDraft } from '../hooks/useEowDraft'
 import { EOW_QUESTIONS, EOW_FORM_TITLE, EOW_FORM_DESCRIPTION } from '../config/eowQuestions'
 import { useRocks } from '../hooks/useRocks'
 import { useTeam, weekOf, shortDate, firstName, currentQuarter, quarterLabel } from '../lib/team'
@@ -42,14 +43,11 @@ export function EowStatus() {
   const cq = currentQuarter()
   const { rocks } = useRocks(quarterLabel(cq.q, cq.year), me.id)
 
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const draft = useEowDraft(me.id, week, mine?.answers ?? null, mine?.updated_at ?? null, !loading)
+  const answers = draft.answers
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (mine) setAnswers(mine.answers)
-  }, [mine?.id])
 
   const missing = EOW_QUESTIONS.filter(q => q.required && !(answers[q.id] ?? '').trim())
 
@@ -62,6 +60,7 @@ export function EowStatus() {
     setSaving(true)
     const err = await save(me.id, week, answers)
     setSaving(false)
+    if (!err) draft.clearDraft()
     setStatus(err ? { kind: 'err', text: err } : { kind: 'ok', text: mine ? 'Updated. You can keep editing until Sunday night.' : 'Submitted. You can edit it until Sunday night.' })
   }
 
@@ -81,6 +80,11 @@ export function EowStatus() {
           <p className="text-xs text-gray-400 -mt-1 mb-4">
             Today: {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} · <span className="text-red-500">*</span> required
           </p>
+          {draft.restored && draft.dirty && (
+            <p className="text-xs rounded-lg px-3 py-2 mb-4" style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+              We restored the answers you hadn't submitted yet. Press {mine ? 'Update check-in' : 'Submit'} when you're ready.
+            </p>
+          )}
           <div className="space-y-5">
             {EOW_QUESTIONS.map(q => (
               <div key={q.id}>
@@ -97,13 +101,20 @@ export function EowStatus() {
                     ))}
                   </div>
                 )}
-                <AutoTextarea id={`eow-${q.id}`} value={answers[q.id] ?? ''} onChange={v => setAnswers(a => ({ ...a, [q.id]: v }))} />
+                <AutoTextarea id={`eow-${q.id}`} value={answers[q.id] ?? ''} onChange={v => draft.setAnswer(q.id, v)} />
               </div>
             ))}
           </div>
           <button type="submit" disabled={saving} className="w-full mt-5 text-sm font-semibold text-white py-2.5 rounded-xl disabled:opacity-50" style={{ background: '#2563EB' }}>
             {saving ? 'Saving…' : mine ? 'Update check-in' : 'Submit'}
           </button>
+          <p className="text-xs text-gray-400 mt-2 text-center" aria-live="polite">
+            {!draft.storageOk
+              ? "Drafts can't be saved in this browser, so submit before you leave the page."
+              : draft.dirty && draft.draftSavedAt
+                ? `Draft saved on this computer · ${new Date(draft.draftSavedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · not submitted yet`
+                : draft.dirty ? 'Saving draft…' : mine ? 'All changes submitted' : 'Your answers save as a draft while you type'}
+          </p>
           {status && <p className={`text-sm mt-3 ${status.kind === 'ok' ? 'text-green-700' : 'text-red-600'}`}>{status.text}</p>}
         </form>
 
