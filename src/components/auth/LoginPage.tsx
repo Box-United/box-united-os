@@ -1,9 +1,10 @@
 interface Props {
   onSignIn: () => void
   loading?: boolean
+  error?: string | null
 }
 
-export function LoginPage({ onSignIn, loading }: Props) {
+export function LoginPage({ onSignIn, loading, error }: Props) {
   return (
     // w-full: #root is a flex row, so without it this wrapper shrinks and hugs the left edge
     <div className="w-full min-h-dvh flex items-center justify-center px-4" style={{ background: '#EEF2F7' }}>
@@ -32,6 +33,12 @@ export function LoginPage({ onSignIn, loading }: Props) {
           <p className="text-sm text-gray-500 mb-6">
             Sign in with your Box United Google account to continue.
           </p>
+
+          {error && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">
+              {error}
+            </p>
+          )}
 
           <button
             onClick={onSignIn}

@@ -46,7 +46,11 @@ export function useAuth() {
   async function signInWithGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + window.location.pathname },
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+        // Google only offers Box United accounts; the database also rejects any other domain
+        queryParams: { hd: 'boxunited.org', prompt: 'select_account' },
+      },
     })
   }
 
@@ -54,5 +58,17 @@ export function useAuth() {
     await supabase.auth.signOut()
   }
 
-  return { ...state, signInWithGoogle, signOut }
+  return { ...state, signInError: readSignInError(), signInWithGoogle, signOut }
+}
+
+// Supabase sends OAuth failures back as ?error_description=… or #error_description=…
+function readSignInError(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const desc = params.get('error_description') ?? hash.get('error_description')
+  if (!desc) return null
+  if (/database error|boxunited/i.test(desc)) {
+    return 'Only @boxunited.org Google accounts can sign in. Choose your Box United account and try again.'
+  }
+  return `Sign-in didn't work: ${desc}`
 }
