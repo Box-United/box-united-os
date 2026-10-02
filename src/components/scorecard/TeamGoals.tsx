@@ -7,7 +7,7 @@ import { DEPARTMENTS, deptInfo } from '../../lib/departments'
 import { SectionLabel } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
-import { DeptSelect } from '../ui/DeptTag'
+import { DeptSelect, DeptTag } from '../ui/DeptTag'
 
 const GOAL_OPTIONS: GoalStatus[] = ['not-started', 'in-progress', 'on-track', 'done']
 
@@ -24,6 +24,10 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
   const { me, profiles } = useTeam()
   const { goals: all, loading, error, addGoal, updateGoalStatus, updateGoal, deleteGoal } = useAnnualGoals(year, me.id)
   const goals = filter ? all.filter(filter) : all
+  // Whole-team goals first, then each department's
+  const groups = [null, ...DEPARTMENTS.map(d => d.id)]
+    .map(dept => ({ id: dept ?? 'team', dept, goals: goals.filter(g => (g.department ?? null) === dept) }))
+    .filter(g => g.goals.length > 0)
 
   const [showAdd, setShowAdd] = useState(false)
   const [newTitle, setNewTitle] = useState('')
@@ -95,31 +99,41 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
           {filter && all.length > 0 ? `No team goals for your departments in ${year}.` : `No goals for ${year} yet.`}
         </div>
       ) : (
-        <div className="card divide-y divide-gray-50">
-          {goals.map(goal => {
-            const expanded = expandedId === goal.id
-            return (
-              <div key={goal.id} className="px-4 py-3 group">
-                <div className="flex flex-wrap items-center gap-3">
-                  {goal.owner && <Avatar profile={goal.owner} size={24} />}
-                  <p className="flex-1 min-w-[160px] text-sm font-medium text-gray-900 leading-snug">{goal.title}</p>
-                  <DeptSelect value={goal.department} onChange={d => updateGoal(goal.id, { department: d })} />
-                  <StatusPill status={goal.status} options={GOAL_OPTIONS} onChange={s => updateGoalStatus(goal.id, s as GoalStatus)} />
-                  {goal.description && (
-                    <button onClick={() => setExpandedId(expanded ? null : goal.id)} aria-label="Show description" className="text-gray-300 hover:text-gray-500">
-                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                  )}
-                  {goal.created_by === me.id && (
-                    <button onClick={() => deleteGoal(goal.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-                {goal.description && expanded && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{goal.description}</p>}
+        <div className="space-y-4">
+          {groups.map(group => (
+            <div key={group.id}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <DeptTag dept={group.dept} noneLabel="Whole team" />
+                <span className="text-[11px] text-gray-400">{group.goals.length} goal{group.goals.length === 1 ? '' : 's'}</span>
               </div>
-            )
-          })}
+              <div className="card divide-y divide-gray-50">
+                {group.goals.map(goal => {
+                  const expanded = expandedId === goal.id
+                  return (
+                    <div key={goal.id} className="px-4 py-3 group">
+                      <div className="flex flex-wrap items-center gap-3">
+                        {goal.owner && <Avatar profile={goal.owner} size={24} />}
+                        <p className="flex-1 min-w-[160px] text-sm font-medium text-gray-900 leading-snug">{goal.title}</p>
+                        <DeptSelect value={goal.department} onChange={d => updateGoal(goal.id, { department: d })} />
+                        <StatusPill status={goal.status} options={GOAL_OPTIONS} onChange={s => updateGoalStatus(goal.id, s as GoalStatus)} />
+                        {goal.description && (
+                          <button onClick={() => setExpandedId(expanded ? null : goal.id)} aria-label="Show description" className="text-gray-300 hover:text-gray-500">
+                            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                        )}
+                        {goal.created_by === me.id && (
+                          <button onClick={() => deleteGoal(goal.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                      {goal.description && expanded && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{goal.description}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
       {footer}

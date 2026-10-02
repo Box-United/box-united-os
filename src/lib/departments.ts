@@ -39,3 +39,12 @@ export function makeRelevant(me: Profile, profiles: Profile[]) {
   return (dept: Department | null | undefined) =>
     !dept || me.role === 'executive_director' || mine.has(dept)
 }
+
+// Departments this person leads: theirs, where the person they report to isn't
+// also in it. The executive director leads every department. Mirrors
+// public.leads_department; leads add and remove their department's key metrics.
+export function leadsOf(person: Profile, profiles: Profile[]): Department[] {
+  if (person.role === 'executive_director') return DEPARTMENTS.map(d => d.id)
+  const manager = profiles.find(p => p.id === managerOf(person, profiles))
+  return (person.departments ?? []).filter(d => !(manager?.departments ?? []).includes(d))
+}

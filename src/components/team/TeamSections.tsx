@@ -3,7 +3,6 @@ import { ArrowRight } from 'lucide-react'
 import { useRocks } from '../../hooks/useRocks'
 import { useKpis } from '../../hooks/useKpis'
 import type { Department } from '../../types/database'
-import { METRIC_ORDER } from '../../config/metrics'
 import { useTeam, currentQuarter, quarterLabel, displayName, orgOrder } from '../../lib/team'
 import { DEPARTMENTS } from '../../lib/departments'
 import { SectionLabel } from '../layout/PageShell'
@@ -118,7 +117,7 @@ export function TeamMetricsAndGoals() {
   const [year, setYear] = useState(CURRENT_YEAR)
   return (
     <div className="space-y-8">
-      <KeyMetrics year={year} keys={METRIC_ORDER} controls={<YearPills year={year} onChange={setYear} />} />
+      <KeyMetrics year={year} controls={<YearPills year={year} onChange={setYear} />} />
       <TeamGoals year={year} />
     </div>
   )

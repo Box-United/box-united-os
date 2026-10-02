@@ -3,7 +3,6 @@ import { Target } from 'lucide-react'
 import { useRocks } from '../hooks/useRocks'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
-import { METRIC_CONFIG, METRIC_ORDER } from '../config/metrics'
 import { useTeam, currentQuarter, quarterLabel, displayName } from '../lib/team'
 import { departmentsOf, deptInfo } from '../lib/departments'
 import { PageShell, SectionLabel } from '../components/layout/PageShell'
@@ -30,7 +29,6 @@ export function Scorecard() {
 
   const isExec = me.role === 'executive_director'
   const myDepts = departmentsOf(me, profiles)
-  const metricKeys = METRIC_ORDER.filter(k => relevant(METRIC_CONFIG[k].department))
   const exec = profiles.find(p => p.role === 'executive_director')
   const deptNames = myDepts.map(d => deptInfo(d)!.label).join(' · ')
 
@@ -60,7 +58,7 @@ export function Scorecard() {
       <div className="space-y-8">
         <KeyMetrics
           year={year}
-          keys={metricKeys}
+          filter={m => relevant(m.department)}
           title={`Key metrics for your departments · ${year}`}
           empty={
             <>

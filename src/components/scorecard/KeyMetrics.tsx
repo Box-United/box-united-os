@@ -1,28 +1,34 @@
 import { useState, useRef, type ReactNode } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useScorecardMetrics } from '../../hooks/useScorecardMetrics'
-import type { MetricHistory } from '../../types/database'
+import { useKeyMetrics } from '../../hooks/useKeyMetrics'
+import type { Department, KeyMetric, MetricHistory, MetricUnit } from '../../types/database'
 import type { MetricKey, ScorecardMetric } from '../../hooks/useScorecardMetrics'
-import { METRIC_CONFIG } from '../../config/metrics'
+import { UNITS, formatMetric } from '../../config/metrics'
 import { useTeam, firstName, shortDate } from '../../lib/team'
+import { DEPARTMENTS, leadsOf } from '../../lib/departments'
 import { SectionLabel, ProgressBar } from '../layout/PageShell'
 import { DeptTag } from '../ui/DeptTag'
 
 // ---------- metric tile ----------
 
 interface MetricCardProps {
-  metricKey: MetricKey
+  def: KeyMetric
   metric: ScorecardMetric | undefined
   history: MetricHistory[]
   onUpdate: (key: MetricKey, field: 'actual' | 'target', value: number | null) => void
+  onRemove?: () => void
 }
 
-function MetricCard({ metricKey, metric, history, onUpdate }: MetricCardProps) {
+function MetricCard({ def, metric, history, onUpdate, onRemove }: MetricCardProps) {
+  const metricKey = def.key
   const { byId } = useTeam()
   const [editingField, setEditingField] = useState<'actual' | 'target' | null>(null)
   const [editValue, setEditValue] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const config = METRIC_CONFIG[metricKey]
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const config = { label: def.label, department: def.department, format: (v: number) => formatMetric(def.unit, v) }
 
   const actual = metric?.actual ?? 0
   const target = metric?.target ?? 0
@@ -69,10 +75,23 @@ function MetricCard({ metricKey, metric, history, onUpdate }: MetricCardProps) {
   )
 
   return (
-    <div className="card p-5 min-w-0 flex flex-col">
+    <div className="card p-5 min-w-0 flex flex-col group">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">{config.label}</span>
         <span className="ml-auto"><DeptTag dept={config.department} /></span>
+        {onRemove && (
+          confirmRemove ? (
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <button onClick={onRemove} className="font-semibold text-red-600">Remove</button>
+              <button onClick={() => setConfirmRemove(false)} className="text-gray-400">Keep</button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirmRemove(true)} aria-label={`Remove ${config.label}`}
+              className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+              <Trash2 size={12} />
+            </button>
+          )
+        )}
       </div>
 
       <div className="flex items-end gap-3 mt-2">
@@ -142,38 +161,87 @@ function MetricCard({ metricKey, metric, history, onUpdate }: MetricCardProps) {
 
 interface Props {
   year: number
-  keys: MetricKey[]
+  // Limits which metrics show (e.g. to the viewer's departments)
+  filter?: (m: KeyMetric) => boolean
   title?: string
   empty?: ReactNode
   controls?: ReactNode
 }
 
-export function KeyMetrics({ year, keys, title = `Key metrics · ${year}`, empty, controls }: Props) {
-  const { me } = useTeam()
+export function KeyMetrics({ year, filter, title = `Key metrics · ${year}`, empty, controls }: Props) {
+  const { me, profiles } = useTeam()
   const { metrics, loading, error, updateMetric, historyFor } = useScorecardMetrics(year, me.id)
+  const list = useKeyMetrics()
+  const shown = filter ? list.defs.filter(filter) : list.defs
+  const leads = leadsOf(me, profiles)
+  const [adding, setAdding] = useState(false)
 
   return (
     <section>
       <SectionLabel right={
         <div className="flex flex-wrap items-center justify-end gap-3">
           <span className="text-[11px] text-gray-400">click a number to edit · updated together at the first Monday meeting each month</span>
+          {list.editable && leads.length > 0 && (
+            <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+              <Plus size={13} /> Add key metric
+            </button>
+          )}
           {controls}
         </div>
       }>
         {title}
       </SectionLabel>
-      {error && <p role="alert" className="text-xs text-red-600 mb-2">{error}</p>}
-      {keys.length === 0 ? (
-        <div className="card p-5 text-sm text-gray-500">{empty}</div>
+      {(error || list.error) && <p role="alert" className="text-xs text-red-600 mb-2">{error || list.error}</p>}
+      {adding && <AddMetric departments={leads} onCancel={() => setAdding(false)}
+        onSave={async (label, dept, unit) => { if (await list.addMetric(label, dept, unit)) setAdding(false) }} />}
+      {shown.length === 0 ? (
+        <div className="card p-5 text-sm text-gray-500">{empty ?? 'No key metrics yet.'}</div>
       ) : loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{keys.map(k => <div key={k} className="card h-44 animate-pulse" />)}</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{shown.map(m => <div key={m.key} className="card h-44 animate-pulse" />)}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {keys.map(key => (
-            <MetricCard key={key} metricKey={key} metric={metrics.find(m => m.metric_key === key)} history={historyFor(key)} onUpdate={updateMetric} />
+          {shown.map(def => (
+            <MetricCard key={def.key} def={def} metric={metrics.find(m => m.metric_key === def.key)} history={historyFor(def.key)} onUpdate={updateMetric}
+              onRemove={list.editable && leads.includes(def.department) ? () => list.removeMetric(def.key) : undefined} />
           ))}
         </div>
       )}
     </section>
+  )
+}
+
+// Department leads (and the executive director) add metrics for their departments
+function AddMetric({ departments, onSave, onCancel }: {
+  departments: Department[]
+  onSave: (label: string, dept: Department, unit: MetricUnit) => void
+  onCancel: () => void
+}) {
+  const [label, setLabel] = useState('')
+  const [dept, setDept] = useState<Department>(departments[0])
+  const [unit, setUnit] = useState<MetricUnit>('number')
+  const save = () => { if (label.trim()) onSave(label.trim(), dept, unit) }
+
+  return (
+    <div className="card p-5 mb-3 border border-blue-100">
+      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-3">
+        <input autoFocus value={label} onChange={e => setLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onCancel() }}
+          placeholder="Metric name, e.g. Coaches trained" className="text-sm outline-none border border-gray-200 rounded-lg px-3 py-2" />
+        <select value={dept} onChange={e => setDept(e.target.value as Department)} aria-label="Department"
+          className="text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white">
+          {DEPARTMENTS.filter(d => departments.includes(d.id)).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
+        <select value={unit} onChange={e => setUnit(e.target.value as MetricUnit)} aria-label="Counted in"
+          className="text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white">
+          {UNITS.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-2 justify-end mt-3">
+        <span className="text-[11px] text-gray-400 mr-auto">You can add metrics for the departments you lead. Set the target and number on the tile after.</span>
+        <button onClick={onCancel} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+        <button onClick={save} disabled={!label.trim()} className="text-xs font-semibold text-white px-4 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>
+          Add metric
+        </button>
+      </div>
+    </div>
   )
 }

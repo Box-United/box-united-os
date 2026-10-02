@@ -60,7 +60,19 @@ export interface AnnualGoal {
   creator?: Profile
 }
 
-export type MetricKey = 'students' | 'schools' | 'dollars_raised'
+// Built-in keys are 'schools', 'dollars_raised' and 'students'; added metrics get generated keys
+export type MetricKey = string
+export type MetricUnit = 'number' | 'currency' | 'percent'
+
+export interface KeyMetric {
+  key: MetricKey
+  label: string
+  department: Department
+  unit: MetricUnit
+  sort_order: number
+  created_by: string | null
+  created_at: string
+}
 
 export interface ScorecardMetric {
   id: string
