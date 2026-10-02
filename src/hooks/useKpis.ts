@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Kpi, KpiArea } from '../types/database'
+import type { Department, Kpi, KpiArea } from '../types/database'
 
 // KPI areas + KPIs; pass userId to limit to one person.
 export function useKpis(userId?: string) {
@@ -37,10 +37,11 @@ export function useKpis(userId?: string) {
     setLoading(false)
   }
 
-  async function addArea(ownerId: string, name: string, mondayUrl: string | null) {
+  async function addArea(ownerId: string, name: string, mondayUrl: string | null, department: Department | null = null) {
     const res = await supabase
       .from('kpi_areas')
-      .insert({ user_id: ownerId, name, monday_url: mondayUrl, sort_order: areas.length })
+      // department only sent when tagged, so untagged areas still save before migration 008
+      .insert({ user_id: ownerId, name, monday_url: mondayUrl, sort_order: areas.length, ...(department ? { department } : {}) })
       .select('*')
     if (failed(res)) return null
     const area = res.data![0] as KpiArea
@@ -48,7 +49,7 @@ export function useKpis(userId?: string) {
     return area
   }
 
-  async function updateArea(id: string, patch: Partial<Pick<KpiArea, 'name' | 'monday_url'>>) {
+  async function updateArea(id: string, patch: Partial<Pick<KpiArea, 'name' | 'monday_url' | 'department'>>) {
     const before = areas
     setAreas(a => a.map(x => x.id === id ? { ...x, ...patch } : x))
     if (failed(await supabase.from('kpi_areas').update(patch).eq('id', id).select('id'))) setAreas(before)

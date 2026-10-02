@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, EyeOff, FileText, Lock, Send } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { usePerformanceReview, useReviewStatuses, reviewStatus } from '../hooks/usePerformanceReview'
+import { usePerformanceReview, useReviewHistory, useReviewStatuses, reviewStatus } from '../hooks/usePerformanceReview'
 import { useIndividualGoals } from '../hooks/useIndividualGoals'
 import { useKpis } from '../hooks/useKpis'
 import type { Profile, ReviewItem, ReviewPeriod, Rock } from '../types/database'
@@ -25,14 +25,8 @@ const REFLECTION: { id: string; label: string; help: (p: ReviewPeriod) => string
   { id: 'support', label: 'Support needed', help: () => 'What would help you do your best work?' },
 ]
 
-// Mirrors public.can_review: the person's manager or the executive director, never yourself
-function makeCanReview(me: Profile) {
-  return (p: Profile) => p.id !== me.id && (me.role === 'executive_director' || p.manager_id === me.id)
-}
-
 export function PerformanceReviews() {
-  const { me, profiles } = useTeam()
-  const canReview = makeCanReview(me)
+  const { me, profiles, canReview } = useTeam()
   const people = [me, ...profiles.filter(p => p.id !== me.id && canReview(p))]
 
   const [year, setYear] = useState(THIS_YEAR)
@@ -41,6 +35,8 @@ export function PerformanceReviews() {
   const statuses = useReviewStatuses(year)
 
   const person = people.find(p => p.id === personId) ?? me
+  const history = useReviewHistory(person.id)
+  const years = [...new Set([THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1, ...history.map(r => r.year)])].sort((a, b) => a - b)
   const exec = profiles.find(p => p.role === 'executive_director')
   const reviewerId = person.manager_id ?? (person.role !== 'executive_director' ? exec?.id ?? null : null)
 
@@ -55,7 +51,7 @@ export function PerformanceReviews() {
         actions={
           <select value={year} onChange={e => setYear(Number(e.target.value))} aria-label="Year"
             className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
-            {[THIS_YEAR - 1, THIS_YEAR, THIS_YEAR + 1].map(y => <option key={y} value={y}>{y}</option>)}
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         }
       />
@@ -83,6 +79,26 @@ export function PerformanceReviews() {
                     )
                   })}
                 </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">
+            Review history
+          </span>
+          {history.map(r => {
+            const st = reviewStatus(r)
+            const active = r.year === year && r.period === period
+            return (
+              <button key={r.id} onClick={() => { setYear(r.year); setPeriod(r.period) }}
+                className="flex items-center gap-2 text-xs bg-white border rounded-full pl-3 pr-1.5 py-1 hover:border-blue-300"
+                style={{ borderColor: active ? '#2563EB' : '#e5e7eb' }}>
+                <span className="font-semibold text-gray-800">{r.period === 'mid_year' ? 'Mid-year' : 'End of year'} {r.year}</span>
+                <span className={`status-pill ${st.cls} text-[10px]`}>{st.label}</span>
               </button>
             )
           })}

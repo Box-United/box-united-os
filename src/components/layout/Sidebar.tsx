@@ -1,5 +1,5 @@
 import { LayoutDashboard, Users, LogOut, Dumbbell, Target, ClipboardCheck, FileText, X } from 'lucide-react'
-import { useTeam, displayName } from '../../lib/team'
+import { useTeam, displayName, orgOrder } from '../../lib/team'
 import { Avatar } from '../ui/Avatar'
 
 export type Page = 'dashboard' | 'team' | 'scorecard' | 'eow' | 'reviews'
@@ -41,11 +41,11 @@ export function Sidebar({
 }: Props) {
   const { me, profiles } = useTeam()
 
-  const others = profiles.filter(p => p.id !== me.id)
   const missing = PLACEHOLDERS.filter(
     ph => !profiles.some(p => (p.full_name ?? p.email).toLowerCase().startsWith(ph.key)),
   )
-  const members = [me, ...others]
+  // Indented by reporting line: each manager, then the people who report to them
+  const members = orgOrder(profiles)
 
   return (
     <>
@@ -104,14 +104,14 @@ export function Sidebar({
         <div className="px-4 py-4 border-t border-white/10 flex-1 overflow-y-auto">
           <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mb-2 px-1">Team</p>
           <div className="space-y-0.5">
-            {members.map(p => {
+            {members.map(({ person: p, depth }) => {
               const viewing = activePage === 'dashboard' && viewingUserId === p.id
               return (
                 <button
                   key={p.id}
                   onClick={() => onSelectUser(p.id)}
                   className="w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left transition-colors hover:bg-white/5"
-                  style={{ background: viewing ? 'rgba(255,255,255,0.08)' : undefined }}
+                  style={{ background: viewing ? 'rgba(255,255,255,0.08)' : undefined, paddingLeft: 6 + Math.min(depth, 3) * 14 }}
                 >
                   <Avatar profile={p} size={26} ring={viewing} />
                   <span className="text-xs text-white/80 truncate">

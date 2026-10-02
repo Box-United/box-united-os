@@ -6,11 +6,12 @@ import { LoginPage } from './components/auth/LoginPage'
 import { Sidebar, type Page } from './components/layout/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { TeamBoard } from './components/team/TeamBoard'
-import { Scorecard } from './pages/AnnualGoals'
+import { Scorecard } from './pages/Scorecard'
 import { EowStatus } from './pages/EowStatus'
 import { PerformanceReviews } from './pages/PerformanceReviews'
 import { supabase } from './lib/supabase'
-import { TeamContext, makeCanEdit, type TeamContextValue } from './lib/team'
+import { TeamContext, makeCanEdit, makeCanReview, type TeamContextValue } from './lib/team'
+import { makeRelevant } from './lib/departments'
 import type { Profile } from './types/database'
 
 const PATHS: Record<Page, string> = {
@@ -28,7 +29,7 @@ function pageFromHash(): Page {
 }
 
 export default function App() {
-  const { user, profile, loading, signInError, signInWithGoogle, signOut } = useAuth()
+  const { user, profile, loading, signInError, signInNotice, signInWithGoogle, signOut } = useAuth()
   const [page, setPage] = useState<Page>(pageFromHash)
   const [viewingUserId, setViewingUserId] = useState<string | null>(null)
   const [allProfiles, setAllProfiles] = useState<Profile[]>([])
@@ -60,6 +61,8 @@ export default function App() {
       profiles: allProfiles.length ? allProfiles : [me],
       byId: id => allProfiles.find(p => p.id === id),
       canEdit: makeCanEdit(me, allProfiles),
+      canReview: makeCanReview(me),
+      relevant: makeRelevant(me, allProfiles),
       openDashboard: uid => handleSelectUser(uid),
     }
   }, [profile, allProfiles])
@@ -73,7 +76,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onSignIn={signInWithGoogle} error={signInError} />
+    return <LoginPage onSignIn={signInWithGoogle} error={signInError} notice={signInNotice} />
   }
 
   if (!team) {

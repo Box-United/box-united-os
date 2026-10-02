@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import type { useKpis } from '../../hooks/useKpis'
-import type { Kpi, KpiArea, KpiStatus, TeamTask } from '../../types/database'
+import type { Department, Kpi, KpiArea, KpiStatus, TeamTask } from '../../types/database'
 import { useTeam } from '../../lib/team'
+import { DEPARTMENTS } from '../../lib/departments'
 import { ProgressBar, SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { DeptSelect, DeptTag } from '../ui/DeptTag'
 
 interface Props {
   kpiState: ReturnType<typeof useKpis>
@@ -29,6 +31,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   const [kpiTitle, setKpiTitle] = useState('')
   const [areaName, setAreaName] = useState('')
   const [areaUrl, setAreaUrl] = useState('')
+  const [dept, setDept] = useState<Department | null>(null)
   const [target, setTarget] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -36,17 +39,19 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   const urlOk = isUrl(areaUrl.trim())
   const canSave = kpiTitle.trim() && areaName.trim() && urlOk && !saving
 
-  // Picking an existing program area fills in its Monday board link
+  // Picking an existing program area fills in its Monday board link and department
   function onAreaChange(v: string) {
     setAreaName(v)
     const match = areas.find(a => a.name.trim().toLowerCase() === v.trim().toLowerCase())
     if (match?.monday_url && !areaUrl.trim()) setAreaUrl(match.monday_url)
+    if (match?.department) setDept(match.department)
   }
 
   function reset() {
     setKpiTitle('')
     setAreaName('')
     setAreaUrl('')
+    setDept(null)
     setTarget('')
     setAdding(false)
   }
@@ -56,7 +61,8 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     setSaving(true)
     let area = existing ?? null
     if (area && area.monday_url !== areaUrl.trim()) await updateArea(area.id, { monday_url: areaUrl.trim() })
-    if (!area) area = await addArea(personId, areaName.trim(), areaUrl.trim())
+    if (area && dept && area.department !== dept) await updateArea(area.id, { department: dept })
+    if (!area) area = await addArea(personId, areaName.trim(), areaUrl.trim(), dept)
     if (area) {
       const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
       await addKpi({ ...area, monday_url: areaUrl.trim() }, kpiTitle.trim(), t != null && !isNaN(t) ? t : null)
@@ -99,12 +105,20 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
               {areaName.trim() && <span className="block text-[11px] text-gray-400 mt-1">{existing ? 'Adds to this existing area' : 'Creates a new program area'}</span>}
             </label>
             <label className="block">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Department</span>
+              <select value={dept ?? ''} onChange={e => setDept((e.target.value || null) as Department | null)}
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400">
+                <option value="">No department</option>
+                {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </label>
+            <label className="block">
               <span className="block text-xs font-semibold text-gray-700 mb-1">Target number <span className="font-normal text-gray-400">(optional)</span></span>
               <input value={target} onChange={e => setTarget(e.target.value)} inputMode="decimal"
                 placeholder="e.g. 30"
                 className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
             </label>
-            <label className="block md:col-span-2">
+            <label className="block">
               <span className="block text-xs font-semibold text-gray-700 mb-1">Link to the Monday board</span>
               <input value={areaUrl} onChange={e => setAreaUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
                 placeholder="https://boxunited.monday.com/boards/…"
@@ -184,6 +198,9 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, mondayUrl, onDelete 
     <div className="group/area">
       <div className="flex items-center gap-2 pb-1.5 border-b border-gray-100">
         <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-700">{area.name}</h3>
+        {editable
+          ? <DeptSelect value={area.department} onChange={d => kpiState.updateArea(area.id, { department: d })} noneLabel="No department" />
+          : <DeptTag dept={area.department} />}
         {mondayUrl ? (
           <a href={mondayUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline">
             Monday board <ExternalLink size={10} />

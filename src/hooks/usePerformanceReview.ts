@@ -184,6 +184,17 @@ export function useReviewStatuses(year: number) {
   return rows
 }
 
+// Every review on record for one person (only rows you may see), newest first
+export function useReviewHistory(employeeId: string) {
+  const [rows, setRows] = useState<PerformanceReview[]>([])
+  useEffect(() => {
+    supabase.from('performance_reviews').select('*').eq('employee_id', employeeId)
+      .order('year', { ascending: false }).order('period', { ascending: true })  // end_of_year before mid_year
+      .then(({ data }) => setRows((data as PerformanceReview[]) ?? []))
+  }, [employeeId])
+  return rows
+}
+
 export function reviewStatus(r: PerformanceReview | null | undefined) {
   if (!r) return { label: 'Not started', cls: 'not-started' }
   if (r.employee_signed_at && r.reviewer_signed_at) return { label: 'Complete', cls: 'goal-done' }

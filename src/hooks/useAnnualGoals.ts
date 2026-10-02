@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { AnnualGoal, GoalStatus } from '../types/database'
+import type { AnnualGoal, Department, GoalStatus } from '../types/database'
 
 export function useAnnualGoals(year: number, loggedInUserId: string) {
   const [goals, setGoals] = useState<AnnualGoal[]>([])
@@ -31,7 +31,7 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
     setLoading(false)
   }
 
-  async function addGoal(title: string, description?: string, ownerId?: string) {
+  async function addGoal(title: string, description?: string, ownerId?: string, department?: Department | null) {
     const { data, error } = await supabase
       .from('annual_goals')
       .insert({
@@ -41,14 +41,18 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
         year,
         owner_id: ownerId ?? null,
         created_by: loggedInUserId,
+        // only sent when tagged, so untagged goals still save before migration 008
+        ...(department ? { department } : {}),
       })
       .select('*, owner:profiles!owner_id(*), creator:profiles!created_by(*)')
       .single()
-    if (error || !data) setError("Couldn't save the goal. Check your connection and try again.")
-    else {
-      setError(null)
-      setGoals(g => [...g, data as AnnualGoal])
+    if (error || !data) {
+      setError("Couldn't save the goal. Check your connection and try again.")
+      return null
     }
+    setError(null)
+    setGoals(g => [...g, data as AnnualGoal])
+    return data as AnnualGoal
   }
 
   async function updateGoalStatus(id: string, status: GoalStatus) {
@@ -57,7 +61,7 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
     if (failed(await supabase.from('annual_goals').update({ status }).eq('id', id).select('id'))) setGoals(before)
   }
 
-  async function updateGoal(id: string, updates: { title?: string; description?: string | null; owner_id?: string | null }) {
+  async function updateGoal(id: string, updates: { title?: string; description?: string | null; owner_id?: string | null; department?: Department | null }) {
     const before = goals
     setGoals(g => g.map(goal => goal.id === id ? { ...goal, ...updates } : goal))
     if (failed(await supabase.from('annual_goals').update(updates).eq('id', id).select('id'))) setGoals(before)

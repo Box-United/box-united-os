@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
+import { TeamRocks, TeamKpis, TeamMetricsAndGoals } from './TeamSections'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
 import { useKpis } from '../../hooks/useKpis'
 import { useRocks } from '../../hooks/useRocks'
@@ -18,7 +19,40 @@ function parseLink(v: string) {
   return { kpi_id: v.startsWith('kpi:') ? v.slice(4) : null, rock_id: v.startsWith('rock:') ? v.slice(5) : null }
 }
 
+const TABS = [
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'rocks', label: 'Rocks' },
+  { id: 'kpis', label: 'KPIs' },
+  { id: 'goals', label: 'Metrics & goals' },
+] as const
+type Tab = typeof TABS[number]['id']
+
+// Everything the whole team shares: tasks, everyone's rocks and KPIs, all key metrics and team goals
 export function TeamBoard() {
+  const [tab, setTab] = useState<Tab>('tasks')
+
+  return (
+    <PageShell>
+      <PageHeader
+        icon={<Users size={18} className="text-blue-600" />}
+        title="Team Board"
+        subtitle="Everyone's tasks, rocks and KPIs, plus all key metrics and team goals."
+      />
+      <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100 w-fit max-w-full overflow-x-auto mb-5" role="tablist" aria-label="Team Board sections">
+        {TABS.map(t => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className="text-sm font-semibold px-4 py-1.5 rounded-lg whitespace-nowrap"
+            style={{ background: tab === t.id ? '#2563EB' : 'transparent', color: tab === t.id ? 'white' : '#6b7280' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'tasks' ? <TeamTasks /> : tab === 'rocks' ? <TeamRocks /> : tab === 'kpis' ? <TeamKpis /> : <TeamMetricsAndGoals />}
+    </PageShell>
+  )
+}
+
+function TeamTasks() {
   const { me, profiles, canEdit } = useTeam()
   const board = useTeamTasks()
   const { kpis } = useKpis()
@@ -45,34 +79,32 @@ export function TeamBoard() {
   const canEditTask = (t: TeamTask) => t.created_by === me.id || canEdit(t.assigned_to)
 
   return (
-    <PageShell>
-      <PageHeader
-        icon={<Users size={18} className="text-blue-600" />}
-        title="Team Board"
-        subtitle="Joint and meeting-assigned tasks, each tied to a KPI or rock. Task-by-task detail stays in Monday."
-        actions={
-          <>
-            <select
-              value={view}
-              onChange={e => { setView(e.target.value); setAdding(false) }}
-              aria-label="Month"
-              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm"
+    <>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="flex-1 min-w-[220px] text-sm text-gray-500">
+          Joint and meeting-assigned tasks, each tied to a KPI or rock. Task-by-task detail stays in Monday.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={view}
+            onChange={e => { setView(e.target.value); setAdding(false) }}
+            aria-label="Month"
+            className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm"
+          >
+            <option value={CURRENT}>This month ({monthLabel(monthKey())})</option>
+            {months.map(m => <option key={m} value={m}>Archive · {monthLabel(m)}</option>)}
+          </select>
+          {view === CURRENT && (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl hover:opacity-90"
+              style={{ background: '#2563EB' }}
             >
-              <option value={CURRENT}>This month ({monthLabel(monthKey())})</option>
-              {months.map(m => <option key={m} value={m}>Archive · {monthLabel(m)}</option>)}
-            </select>
-            {view === CURRENT && (
-              <button
-                onClick={() => setAdding(true)}
-                className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl hover:opacity-90"
-                style={{ background: '#2563EB' }}
-              >
-                <Plus size={15} /> Add task
-              </button>
-            )}
-          </>
-        }
-      />
+              <Plus size={15} /> Add task
+            </button>
+          )}
+        </div>
+      </div>
 
       {board.error && <p className="text-sm text-red-600 mb-3">{board.error}</p>}
 
@@ -143,8 +175,7 @@ export function TeamBoard() {
           {archiveMsg && <span className="text-gray-400">{archiveMsg}</span>}
         </div>
       )}
-
-    </PageShell>
+    </>
   )
 }
 

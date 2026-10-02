@@ -18,8 +18,9 @@ npm install
 cp .env.example .env
 # Fill in VITE_SUPABASE_ANON_KEY from your Supabase project dashboard
 
-# 3. Apply database schema (one-time)
-# Run supabase/migrations/001_phase1_schema.sql in the Supabase SQL editor
+# 3. Apply database schema
+# Run each file in supabase/migrations/ in order (001 → 008) in the Supabase
+# SQL editor. When a new migration lands, run just that file.
 # Project: kfdyvfxkguhcydbjyjgt
 
 # 4. Enable Google OAuth in Supabase

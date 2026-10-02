@@ -1,11 +1,13 @@
 import { createContext, useContext } from 'react'
-import type { Profile } from '../types/database'
+import type { Department, Profile } from '../types/database'
 
 export interface TeamContextValue {
   me: Profile
   profiles: Profile[]
   byId: (id: string | null | undefined) => Profile | undefined
   canEdit: (ownerId: string | null | undefined) => boolean
+  canReview: (person: Profile) => boolean
+  relevant: (dept: Department | null | undefined) => boolean
   openDashboard: (userId: string) => void
 }
 
@@ -24,6 +26,34 @@ export function makeCanEdit(me: Profile, profiles: Profile[]) {
     if (ownerId === me.id || me.role === 'executive_director') return true
     return profiles.find(p => p.id === ownerId)?.manager_id === me.id
   }
+}
+
+// Mirrors public.can_review: the person's manager or the executive director, never yourself.
+// The same people can see someone's EOW check-ins and performance reviews.
+export function makeCanReview(me: Profile) {
+  return (p: Profile) => p.id !== me.id && (me.role === 'executive_director' || p.manager_id === me.id)
+}
+
+// Who someone reports to. Anyone without a manager set reports to the executive director.
+export function managerOf(p: Profile, profiles: Profile[]) {
+  if (p.manager_id && profiles.some(x => x.id === p.manager_id)) return p.manager_id
+  if (p.role === 'executive_director') return null
+  return profiles.find(x => x.role === 'executive_director' && x.id !== p.id)?.id ?? null
+}
+
+// Everyone in reporting order (each manager followed by their reports), with depth for indenting
+export function orgOrder(profiles: Profile[]) {
+  const out: { person: Profile; depth: number }[] = []
+  const placed = new Set<string>()
+  const visit = (p: Profile, depth: number) => {
+    if (placed.has(p.id)) return
+    placed.add(p.id)
+    out.push({ person: p, depth })
+    for (const r of profiles) if (r.id !== p.id && managerOf(r, profiles) === p.id) visit(r, depth + 1)
+  }
+  for (const p of profiles) if (!managerOf(p, profiles)) visit(p, 0)
+  for (const p of profiles) visit(p, 0)  // anyone caught in a reporting loop
+  return out
 }
 
 export function initials(p: Pick<Profile, 'full_name' | 'email'> | undefined | null) {

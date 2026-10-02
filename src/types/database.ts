@@ -2,6 +2,7 @@ export type RockStatus = 'on-track' | 'off-track' | 'done'
 export type TeamTaskStatus = 'todo' | 'in-progress' | 'done'
 export type GoalStatus = 'not-started' | 'in-progress' | 'on-track' | 'done'
 export type KpiStatus = 'not-started' | 'in-progress' | 'on-track' | 'off-track' | 'done'
+export type Department = 'program' | 'development' | 'operations'
 
 export interface Profile {
   id: string
@@ -10,6 +11,8 @@ export interface Profile {
   avatar_url: string | null
   role: string | null
   manager_id: string | null
+  title: string | null
+  departments: Department[] | null
   created_at: string
 }
 
@@ -50,6 +53,7 @@ export interface AnnualGoal {
   status: GoalStatus
   year: number
   owner_id: string | null
+  department: Department | null
   created_by: string
   created_at: string
   owner?: Profile | null
@@ -83,6 +87,7 @@ export interface KpiArea {
   user_id: string
   name: string
   monday_url: string | null
+  department: Department | null
   sort_order: number
   created_at: string
 }

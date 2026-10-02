@@ -5,7 +5,7 @@ import { useEow } from '../hooks/useEow'
 import { useEowDraft } from '../hooks/useEowDraft'
 import { EOW_QUESTIONS, EOW_FORM_TITLE, EOW_FORM_DESCRIPTION } from '../config/eowQuestions'
 import { useRocks } from '../hooks/useRocks'
-import { useTeam, weekOf, shortDate, firstName, currentQuarter, quarterLabel } from '../lib/team'
+import { useTeam, weekOf, shortDate, firstName, displayName, currentQuarter, quarterLabel } from '../lib/team'
 import { StatusPill } from '../components/ui/StatusPill'
 import { PageShell, PageHeader, SectionLabel } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
@@ -15,8 +15,22 @@ function weekLabel(week: string) {
 }
 
 export function EowStatus() {
-  const { me, byId } = useTeam()
-  const { submissions, loading, save } = useEow()
+  const { me, profiles, byId, canReview } = useTeam()
+  const eow = useEow()
+  const { loading, save } = eow
+  // Only your own check-ins and those of people who report to you (the ED sees all).
+  // The database enforces the same rule (migration 008).
+  const submissions = eow.submissions.filter(s => {
+    const p = byId(s.user_id)
+    return s.user_id === me.id || (p != null && canReview(p))
+  })
+  const exec = profiles.find(p => p.role === 'executive_director')
+  const viewers = me.role === 'executive_director'
+    ? 'you'
+    : me.manager_id && me.manager_id !== exec?.id
+      ? `you, ${displayName(byId(me.manager_id))} and ${exec ? displayName(exec) : 'the executive director'}`
+      : `you and ${exec ? displayName(exec) : 'the executive director'}`
+  const seesOthers = submissions.some(s => s.user_id !== me.id) || profiles.some(p => canReview(p))
   const week = weekOf()
   const mine = submissions.find(s => s.user_id === me.id && s.week_of === week)
   const cq = currentQuarter()
@@ -48,7 +62,7 @@ export function EowStatus() {
       <PageHeader
         icon={<ClipboardCheck size={18} className="text-blue-600" />}
         title="End-of-Week Status"
-        subtitle={`${EOW_FORM_TITLE} · ${EOW_FORM_DESCRIPTION}. One per person per week; only you can edit yours.`}
+        subtitle={`${EOW_FORM_TITLE} · ${EOW_FORM_DESCRIPTION}. One per person per week; only you can edit yours, and only ${viewers} can see it.`}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
@@ -98,7 +112,7 @@ export function EowStatus() {
         </form>
 
         <section className="card p-5 md:p-6 self-start">
-          <SectionLabel>Submissions · newest first</SectionLabel>
+          <SectionLabel>{seesOthers ? 'Your check-ins and your team\'s' : 'Your check-ins'} · newest first</SectionLabel>
           {loading ? (
             <div className="h-20 bg-gray-100 rounded-lg animate-pulse" />
           ) : submissions.length === 0 ? (

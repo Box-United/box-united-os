@@ -4,10 +4,12 @@ import { Avatar } from '../components/ui/Avatar'
 import { NotificationBell } from '../components/dashboard/NotificationBell'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
 import { IndividualGoals } from '../components/dashboard/IndividualGoals'
+import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
+import { DeptTag } from '../components/ui/DeptTag'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
 import type { useNotifications } from '../hooks/useNotifications'
-import { useTeam, displayName } from '../lib/team'
+import { useTeam, displayName, managerOf } from '../lib/team'
 
 interface Props {
   viewingUserId: string
@@ -19,13 +21,14 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export function Dashboard({ viewingUserId, notifications }: Props) {
-  const { me, byId, canEdit } = useTeam()
+  const { me, profiles, byId, canEdit } = useTeam()
   const person = byId(viewingUserId) ?? me
   const isOwn = person.id === me.id
   const editable = canEdit(person.id)
+  const manager = byId(managerOf(person, profiles))
 
   const kpis = useKpis(person.id)
-  const { tasks } = useTeamTasks()
+  const board = useTeamTasks()
 
   return (
     <PageShell>
@@ -47,15 +50,27 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
           <h1 className="text-xl font-bold text-gray-900 truncate" style={{ fontFamily: 'Archivo, sans-serif' }}>
             {displayName(person)}
           </h1>
-          <p className="text-sm text-gray-400">{(person.role && ROLE_LABELS[person.role]) || 'Team member'}</p>
+          <p className="text-sm text-gray-400">
+            {person.title || (person.role && ROLE_LABELS[person.role]) || 'Team member'}
+            {manager && <> · reports to {displayName(manager)}</>}
+          </p>
+          {(person.departments ?? []).length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+              {(person.departments ?? []).map(d => <DeptTag key={d} dept={d} />)}
+            </div>
+          )}
         </div>
         {isOwn && <NotificationBell notifications={notifications} />}
       </div>
 
+      <TopTasks board={board} personId={person.id} />
+
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
-        <KpiPanel kpiState={kpis} tasks={tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} />
+        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} />
         <IndividualGoals personId={person.id} editable={editable} />
       </div>
+
+      <MyTasksTable board={board} personId={person.id} />
     </PageShell>
   )
 }
