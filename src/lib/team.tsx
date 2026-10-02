@@ -9,6 +9,7 @@ export interface TeamContextValue {
   canReview: (person: Profile) => boolean
   relevant: (dept: Department | null | undefined) => boolean
   openDashboard: (userId: string) => void
+  reloadProfiles: () => Promise<void>
 }
 
 export const TeamContext = createContext<TeamContextValue | null>(null)
@@ -39,6 +40,19 @@ export function managerOf(p: Profile, profiles: Profile[]) {
   if (p.manager_id && profiles.some(x => x.id === p.manager_id)) return p.manager_id
   if (p.role === 'executive_director') return null
   return profiles.find(x => x.role === 'executive_director' && x.id !== p.id)?.id ?? null
+}
+
+// Everyone who reports up to `id`, directly or through someone else
+export function reportsUnder(id: string, profiles: Profile[]) {
+  const below = new Set<string>()
+  for (let grew = true; grew;) {
+    grew = false
+    for (const p of profiles) {
+      const m = managerOf(p, profiles)
+      if (m && (m === id || below.has(m)) && !below.has(p.id) && p.id !== id) { below.add(p.id); grew = true }
+    }
+  }
+  return below
 }
 
 // Everyone in reporting order (each manager followed by their reports), with depth for indenting

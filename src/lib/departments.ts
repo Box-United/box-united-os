@@ -5,6 +5,9 @@ export const DEPARTMENTS: { id: Department; label: string; color: string; bg: st
   { id: 'program', label: 'Program', color: '#047857', bg: '#d1fae5' },
   { id: 'development', label: 'Development', color: '#6d28d9', bg: '#ede9fe' },
   { id: 'operations', label: 'Operations', color: '#b45309', bg: '#fef3c7' },
+  { id: 'marketing', label: 'Marketing', color: '#be185d', bg: '#fce7f3' },
+  { id: 'finance', label: 'Finance', color: '#1d4ed8', bg: '#dbeafe' },
+  { id: 'accounting', label: 'Accounting', color: '#0e7490', bg: '#cffafe' },
 ]
 
 export function deptInfo(d: Department | null | undefined) {

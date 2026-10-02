@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Eye, Pencil } from 'lucide-react'
 import { PageShell } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
@@ -5,6 +6,7 @@ import { NotificationBell } from '../components/dashboard/NotificationBell'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
 import { IndividualGoals } from '../components/dashboard/IndividualGoals'
 import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
+import { PersonSettings } from '../components/dashboard/PersonSettings'
 import { DeptTag } from '../components/ui/DeptTag'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
@@ -29,6 +31,9 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
 
   const kpis = useKpis(person.id)
   const board = useTeamTasks()
+  // Only the executive director sets reporting lines and departments
+  const [settingsFor, setSettingsFor] = useState<string | null>(null)
+  const canSetup = me.role === 'executive_director'
 
   return (
     <PageShell>
@@ -53,6 +58,11 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
           <p className="text-sm text-gray-400">
             {person.title || (person.role && ROLE_LABELS[person.role]) || 'Team member'}
             {manager && <> · reports to {displayName(manager)}</>}
+            {canSetup && settingsFor !== person.id && (
+              <button onClick={() => setSettingsFor(person.id)} className="ml-2 text-xs font-semibold text-blue-600 hover:underline">
+                {person.role === 'executive_director' ? 'Edit' : 'Change'}
+              </button>
+            )}
           </p>
           {(person.departments ?? []).length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -62,6 +72,10 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
         </div>
         {isOwn && <NotificationBell notifications={notifications} />}
       </div>
+
+      {canSetup && settingsFor === person.id && (
+        <PersonSettings key={person.id} person={person} onDone={() => setSettingsFor(null)} />
+      )}
 
       <TopTasks board={board} personId={person.id} />
 

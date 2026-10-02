@@ -2,7 +2,7 @@ export type RockStatus = 'on-track' | 'off-track' | 'done'
 export type TeamTaskStatus = 'todo' | 'in-progress' | 'done'
 export type GoalStatus = 'not-started' | 'in-progress' | 'on-track' | 'done'
 export type KpiStatus = 'not-started' | 'in-progress' | 'on-track' | 'off-track' | 'done'
-export type Department = 'program' | 'development' | 'operations'
+export type Department = 'program' | 'development' | 'operations' | 'marketing' | 'finance' | 'accounting'
 
 export interface Profile {
   id: string

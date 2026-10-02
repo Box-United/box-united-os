@@ -3,7 +3,7 @@ import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAnnualGoals } from '../../hooks/useAnnualGoals'
 import type { AnnualGoal, Department, GoalStatus } from '../../types/database'
 import { useTeam, displayName } from '../../lib/team'
-import { deptInfo } from '../../lib/departments'
+import { DEPARTMENTS, deptInfo } from '../../lib/departments'
 import { SectionLabel } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
@@ -76,9 +76,7 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
             <select value={newDept ?? ''} onChange={e => setNewDept((e.target.value || null) as Department | null)} aria-label="Department"
               className="text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white">
               <option value="">Whole team</option>
-              <option value="program">Program</option>
-              <option value="development">Development</option>
-              <option value="operations">Operations</option>
+              {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </div>
           <div className="flex gap-2 justify-end mt-3">

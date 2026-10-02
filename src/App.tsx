@@ -22,6 +22,8 @@ const PATHS: Record<Page, string> = {
   reviews: 'performance-reviews',
 }
 
+const fetchProfiles = () => supabase.from('profiles').select('*').order('full_name', { ascending: true })
+
 // GitHub Pages serves one index.html, so pages live in the hash: #/eow-status
 function pageFromHash(): Page {
   const h = window.location.hash.replace(/^#\/?/, '')
@@ -40,11 +42,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('profiles')
-      .select('*')
-      .order('full_name', { ascending: true })
-      .then(({ data }) => setAllProfiles(data ?? []))
+    fetchProfiles().then(({ data }) => setAllProfiles(data ?? []))
   }, [user?.id])
 
   useEffect(() => {
@@ -64,6 +62,10 @@ export default function App() {
       canReview: makeCanReview(me),
       relevant: makeRelevant(me, allProfiles),
       openDashboard: uid => handleSelectUser(uid),
+      reloadProfiles: async () => {
+        const { data } = await fetchProfiles()
+        setAllProfiles(data ?? [])
+      },
     }
   }, [profile, allProfiles])
 

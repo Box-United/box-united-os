@@ -65,7 +65,7 @@ export function TeamKpis() {
     <section>
       <SectionLabel
         right={
-          <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+          <div className="flex flex-wrap items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
             <button onClick={() => setDept('all')} className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={pill(dept === 'all')}>All</button>
             {DEPARTMENTS.map(d => (
               <button key={d.id} onClick={() => setDept(d.id)} className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={pill(dept === d.id)}>{d.label}</button>
