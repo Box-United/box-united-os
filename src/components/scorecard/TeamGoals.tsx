@@ -3,7 +3,7 @@ import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAnnualGoals } from '../../hooks/useAnnualGoals'
 import type { AnnualGoal, Department, GoalStatus } from '../../types/database'
 import { useTeam, displayName } from '../../lib/team'
-import { DEPARTMENTS, deptInfo } from '../../lib/departments'
+import { DEPARTMENTS, deptInfo, leadsOf } from '../../lib/departments'
 import { SectionLabel } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
@@ -22,6 +22,10 @@ interface Props {
 // Team annual goals, each tagged with a department (or the whole team)
 export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
   const { me, profiles } = useTeam()
+  // Department goals are managed by that department's lead (or the ED); whole-team goals by anyone
+  const leads = leadsOf(me, profiles)
+  const canManage = (g: AnnualGoal) => !g.department || leads.includes(g.department)
+  const startDept = defaultDept && leads.includes(defaultDept) ? defaultDept : null
   const { goals: all, loading, error, addGoal, updateGoalStatus, updateGoal, deleteGoal } = useAnnualGoals(year, me.id)
   const goals = filter ? all.filter(filter) : all
   // Whole-team goals first, then each department's
@@ -33,7 +37,7 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newOwner, setNewOwner] = useState('')
-  const [newDept, setNewDept] = useState<Department | null>(defaultDept)
+  const [newDept, setNewDept] = useState<Department | null>(startDept)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
@@ -47,7 +51,7 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
     setNewTitle('')
     setNewDesc('')
     setNewOwner('')
-    setNewDept(defaultDept)
+    setNewDept(startDept)
     setShowAdd(false)
   }
 
@@ -80,7 +84,7 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
             <select value={newDept ?? ''} onChange={e => setNewDept((e.target.value || null) as Department | null)} aria-label="Department"
               className="text-sm text-gray-700 outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white">
               <option value="">Whole team</option>
-              {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              {DEPARTMENTS.filter(d => leads.includes(d.id)).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </div>
           <div className="flex gap-2 justify-end mt-3">
@@ -114,14 +118,17 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
                       <div className="flex flex-wrap items-center gap-3">
                         {goal.owner && <Avatar profile={goal.owner} size={24} />}
                         <p className="flex-1 min-w-[160px] text-sm font-medium text-gray-900 leading-snug">{goal.title}</p>
-                        <DeptSelect value={goal.department} onChange={d => updateGoal(goal.id, { department: d })} />
-                        <StatusPill status={goal.status} options={GOAL_OPTIONS} onChange={s => updateGoalStatus(goal.id, s as GoalStatus)} />
+                        {canManage(goal)
+                          ? <DeptSelect value={goal.department} only={leads} onChange={d => updateGoal(goal.id, { department: d })} />
+                          : <DeptTag dept={goal.department} />}
+                        <StatusPill status={goal.status} options={canManage(goal) ? GOAL_OPTIONS : undefined}
+                          onChange={canManage(goal) ? s => updateGoalStatus(goal.id, s as GoalStatus) : undefined} />
                         {goal.description && (
                           <button onClick={() => setExpandedId(expanded ? null : goal.id)} aria-label="Show description" className="text-gray-300 hover:text-gray-500">
                             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                           </button>
                         )}
-                        {goal.created_by === me.id && (
+                        {(goal.department ? canManage(goal) : goal.created_by === me.id || me.role === 'executive_director') && (
                           <button onClick={() => deleteGoal(goal.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
                             <Trash2 size={13} />
                           </button>

@@ -17,11 +17,13 @@ export function DeptTag({ dept, noneLabel }: { dept: Department | null | undefin
 }
 
 // The same chip as a picker
-export function DeptSelect({ value, onChange, noneLabel = 'Whole team', label = 'Department' }: {
+export function DeptSelect({ value, onChange, noneLabel = 'Whole team', label = 'Department', only }: {
   value: Department | null | undefined
   onChange: (d: Department | null) => void
   noneLabel?: string
   label?: string
+  // Limit the choices (the current value always stays listed)
+  only?: Department[]
 }) {
   const c = deptInfo(value) ?? NONE
   return (
@@ -33,7 +35,7 @@ export function DeptSelect({ value, onChange, noneLabel = 'Whole team', label = 
       style={{ color: c.color, background: c.bg }}
     >
       <option value="" className="text-gray-800 bg-white normal-case">{noneLabel}</option>
-      {DEPARTMENTS.map(d => <option key={d.id} value={d.id} className="text-gray-800 bg-white">{d.label}</option>)}
+      {DEPARTMENTS.filter(d => !only || only.includes(d.id) || d.id === value).map(d => <option key={d.id} value={d.id} className="text-gray-800 bg-white">{d.label}</option>)}
     </select>
   )
 }
