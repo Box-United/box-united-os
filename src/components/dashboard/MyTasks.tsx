@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CalendarClock } from 'lucide-react'
+import { CalendarClock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { useTeamTasks } from '../../hooks/useTeamTasks'
 import type { TeamTask } from '../../types/database'
@@ -45,7 +45,9 @@ function useLinkTitles(tasks: TeamTask[]) {
 
   return (t: TeamTask) => t.kpi_id
     ? { kind: 'KPI', title: titles[`kpi:${t.kpi_id}`] }
-    : { kind: 'Rock', title: titles[`rock:${t.rock_id}`] }
+    : t.rock_id
+      ? { kind: 'Rock', title: titles[`rock:${t.rock_id}`] }
+      : { kind: 'Team Board', title: undefined, unlinked: true }
 }
 
 function DueLabel({ task }: { task: TeamTask }) {
@@ -58,9 +60,9 @@ function DueLabel({ task }: { task: TeamTask }) {
   )
 }
 
-function Advances({ link }: { link: { kind: string; title?: string } }) {
+function Advances({ link }: { link: { kind: string; title?: string; unlinked?: boolean } }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 rounded-full px-2 py-0.5 max-w-full">
+    <span className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 max-w-full ${link.unlinked ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50'}`}>
       <span className="font-semibold shrink-0">{link.kind}</span>
       {link.title && <span className="truncate">· {link.title}</span>}
     </span>
@@ -71,15 +73,13 @@ function sourceLabel(t: TeamTask, creator: string) {
   return t.source === 'monday' ? 'Monday' : t.assigned_in_meeting ? 'Meeting' : `Added by ${creator}`
 }
 
-// This person's open tasks that are tied to a KPI or rock (from the Team Board,
-// including anything synced from Monday). Everyday to-dos stay in Monday.
+// This person's Team Board tasks. Monday items only reach the Team Board when
+// they're tied to a KPI or rock (or flagged Team), so everyday to-dos stay in Monday.
 function myTasks(board: Board, personId: string) {
   const assigned = board.tasks.filter(t => t.assigned_to === personId && !t.archived_month)
-  const aligned = assigned.filter(t => t.kpi_id || t.rock_id)
-  const open = aligned.filter(t => t.status !== 'done').sort(byDue)
-  const done = aligned.filter(t => t.status === 'done')
-  const unaligned = assigned.filter(t => !t.kpi_id && !t.rock_id && t.status !== 'done').length
-  return { open, done, unaligned }
+  const open = assigned.filter(t => t.status !== 'done').sort(byDue)
+  const done = assigned.filter(t => t.status === 'done')
+  return { open, done }
 }
 
 export function TopTasks({ board, personId }: { board: Board; personId: string }) {
@@ -98,7 +98,7 @@ export function TopTasks({ board, personId }: { board: Board; personId: string }
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[1, 2, 3].map(i => <div key={i} className="card h-24 animate-pulse" />)}</div>
       ) : top.length === 0 ? (
         <div className="card p-5 text-sm text-gray-400">
-          Nothing open. Tasks tied to {isOwn ? 'your' : 'their'} KPIs and rocks show up here, soonest due first.
+          Nothing open. Tasks tied to {isOwn ? 'your' : 'their'} KPIs and rocks, or added on the Team Board, show up here, soonest due first.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -121,7 +121,7 @@ export function TopTasks({ board, personId }: { board: Board; personId: string }
 
 export function MyTasksTable({ board, personId }: { board: Board; personId: string }) {
   const { me, byId, canEdit } = useTeam()
-  const { open, done, unaligned } = myTasks(board, personId)
+  const { open, done } = myTasks(board, personId)
   const rows = [...open, ...done]
   const linkOf = useLinkTitles(rows)
   const canEditTask = (t: TeamTask) => t.created_by === me.id || canEdit(t.assigned_to)
@@ -130,7 +130,7 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
   return (
     <section className="mt-5">
       <SectionLabel right={<a href="#/team-board" className="text-xs font-semibold text-blue-600 hover:underline">Team Board</a>}>
-        {isOwn ? 'My tasks' : 'Tasks'} · tied to a KPI or rock
+        {isOwn ? 'My tasks' : 'Tasks'} · KPIs, rocks and Team Board
       </SectionLabel>
       {board.error && <p role="alert" className="text-xs text-red-600 mb-2">{board.error}</p>}
       <div className="card overflow-x-auto">
@@ -148,7 +148,7 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
             {board.loading ? (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No open tasks tied to a KPI or rock.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No open tasks.</td></tr>
             ) : rows.map(t => {
               const isDone = t.status === 'done'
               return (
@@ -171,13 +171,6 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
           </tbody>
         </table>
       </div>
-      {unaligned > 0 && (
-        <p className="flex items-center gap-1 text-xs text-amber-700 mt-2">
-          <AlertTriangle size={12} />
-          {unaligned} other open task{unaligned > 1 ? 's aren\'t' : ' isn\'t'} tied to a KPI or rock, so {unaligned > 1 ? 'they\'re' : 'it\'s'} not shown here.
-          Link {unaligned > 1 ? 'them' : 'it'} on the <a href="#/team-board" className="font-semibold hover:underline">Team Board</a>.
-        </p>
-      )}
     </section>
   )
 }
