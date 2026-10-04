@@ -28,7 +28,7 @@ export function useRocks(quarter: string, userId?: string) {
       .insert({ user_id: ownerId, title, status: 'on-track', quarter })
       .select('*')
       .single()
-    if (error) setError(error.message.includes('Maximum 3') ? 'Each person can have up to 3 rocks per quarter.' : error.message)
+    if (error) setError(error.message.includes('Maximum 3') ? 'The database still limits rocks to 3 a quarter. Run migration 012 to lift it.' : error.message)
     else if (data) setRocks(r => [...r, data as Rock])
   }
 

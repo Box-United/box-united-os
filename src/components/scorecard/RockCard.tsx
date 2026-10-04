@@ -15,13 +15,17 @@ interface Props {
   showName?: boolean
 }
 
-// One person's rocks for a quarter (up to 3)
+// Aim for fewer than this many rocks a quarter; it's a guide, not a limit
+const ROCK_TARGET = 6
+
+// One person's rocks for a quarter
 export function RockCard({ person, rocks, quarter, showName = true }: Props) {
   const { canEdit, openDashboard } = useTeam()
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const mine = rocks.rocks.filter(r => r.user_id === person.id)
   const editable = canEdit(person.id)
+  const over = mine.length >= ROCK_TARGET
 
   function save() {
     if (!title.trim()) return
@@ -36,7 +40,7 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
         <div className="flex items-center gap-2 mb-3">
           <Avatar profile={person} size={28} />
           <button onClick={() => openDashboard(person.id)} className="text-sm font-semibold text-gray-900 hover:text-blue-600 truncate">{displayName(person)}</button>
-          <span className="text-xs text-gray-400 ml-auto">{mine.length}/3</span>
+          <span className={`text-xs ml-auto ${over ? 'text-amber-700 font-semibold' : 'text-gray-400'}`} title={`Aim for fewer than ${ROCK_TARGET}`}>{mine.length} rock{mine.length === 1 ? '' : 's'}</span>
         </div>
       )}
       <ul className="space-y-2">
@@ -54,8 +58,9 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
         ))}
         {mine.length === 0 && !adding && <li className="text-xs text-gray-400">No rocks for {quarter}.</li>}
       </ul>
-      {!showName && <p className="text-[11px] text-gray-400 mt-2">{mine.length} of 3 rocks this quarter</p>}
-      {editable && mine.length < 3 && (
+      {!showName && <p className="text-[11px] text-gray-400 mt-2">{mine.length} rock{mine.length === 1 ? '' : 's'} this quarter · aim for fewer than {ROCK_TARGET}</p>}
+      {over && <p className="text-[11px] text-amber-700 mt-1">That's {mine.length} rocks. Fewer than {ROCK_TARGET} keeps the quarter focused.</p>}
+      {editable && (
         adding ? (
           <div className="flex gap-2 mt-2">
             <input autoFocus value={title} onChange={e => setTitle(e.target.value)}
