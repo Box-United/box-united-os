@@ -2,23 +2,20 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { MondayConnection } from '../types/database'
 
-export interface MondayBoard {
-  id: string
-  name: string
-  url: string
-  columns: { id: string; title: string; type: string }[]
-}
+export interface MondayColumn { id: string; title: string; type: string; linksToOs: boolean }
+export interface MondayBoard { id: string; name: string; url: string; columns: MondayColumn[] }
+export interface ColumnMap { done?: string; due?: string; link?: string; team?: string }
 
-// Talks to the `monday-connect` edge function, which holds the Monday API token.
+// Talks to the `monday-sync` edge function, which holds the Monday API token.
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('monday-connect', { body: { action, ...body } })
+  const { data, error } = await supabase.functions.invoke('monday-sync', { body: { action, ...body } })
   if (error) {
-    let msg = error.message
+    let msg = "Couldn't reach the Monday connector. It may not be set up in Supabase yet."
     try {
       const ctx = (error as { context?: Response }).context
       const j = ctx ? await ctx.json() : null
       if (j?.error) msg = j.error
-    } catch { /* keep generic message */ }
+    } catch { /* keep the generic message */ }
     throw new Error(msg)
   }
   return data as T
@@ -41,24 +38,21 @@ export function useMonday(userId: string) {
       })
   }, [userId])
 
-  async function listBoards() {
-    return (await call<{ boards: MondayBoard[] }>('list_boards')).boards
+  return {
+    connection,
+    loading,
+    listBoards: async () => (await call<{ boards: MondayBoard[] }>('list_boards')).boards,
+    createFromTemplate: async () => setConnection((await call<{ connection: MondayConnection }>('create_from_template')).connection),
+    addColumns: (boardId: string) => call('add_columns', { board_id: boardId }),
+    linkBoard: async (boardId: string, columnMap: ColumnMap) => {
+      const r = await call<{ connection: MondayConnection; imported: number }>('link_board', { board_id: boardId, column_map: columnMap })
+      setConnection(r.connection)
+      return r.imported
+    },
+    sync: () => call<{ synced: number; imported: number }>('sync'),
+    disconnect: async () => {
+      await call('disconnect')
+      setConnection(null)
+    },
   }
-
-  async function applyTemplate() {
-    const r = await call<{ connection: MondayConnection }>('create_from_template')
-    setConnection(r.connection)
-  }
-
-  async function linkBoard(boardId: string, columnMap: Record<string, string>) {
-    const r = await call<{ connection: MondayConnection }>('link_board', { board_id: boardId, column_map: columnMap })
-    setConnection(r.connection)
-  }
-
-  async function disconnect() {
-    await call('disconnect')
-    setConnection(null)
-  }
-
-  return { connection, loading, listBoards, applyTemplate, linkBoard, disconnect }
 }

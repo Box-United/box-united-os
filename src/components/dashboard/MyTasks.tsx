@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock } from 'lucide-react'
+import { CalendarClock, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { useTeamTasks } from '../../hooks/useTeamTasks'
+import { useRocks } from '../../hooks/useRocks'
+import { useKpis } from '../../hooks/useKpis'
+import { useIndividualGoals } from '../../hooks/useIndividualGoals'
+import { useAnnualGoals } from '../../hooks/useAnnualGoals'
 import type { TeamTask } from '../../types/database'
-import { useTeam, firstName, shortDate } from '../../lib/team'
+import { useTeam, firstName, shortDate, currentQuarter, quarterLabel } from '../../lib/team'
 import { SectionLabel } from '../layout/PageShell'
 
 type Board = ReturnType<typeof useTeamTasks>
@@ -21,33 +25,38 @@ function byDue(a: TeamTask, b: TeamTask) {
   return a.created_at.localeCompare(b.created_at)
 }
 
-// Titles of the KPIs and rocks these tasks advance (they can belong to anyone)
+// What each task supports: a rock, KPI, personal goal or team goal (any owner's)
+const LINKS = [
+  { field: 'rock_id', table: 'rocks', kind: 'Rock' },
+  { field: 'kpi_id', table: 'kpis', kind: 'KPI' },
+  { field: 'goal_id', table: 'individual_goals', kind: 'Goal' },
+  { field: 'team_goal_id', table: 'annual_goals', kind: 'Team goal' },
+] as const
+
 function useLinkTitles(tasks: TeamTask[]) {
-  const kpiIds = [...new Set(tasks.map(t => t.kpi_id).filter(Boolean) as string[])].sort().join(',')
-  const rockIds = [...new Set(tasks.map(t => t.rock_id).filter(Boolean) as string[])].sort().join(',')
+  const key = LINKS.map(l => [...new Set(tasks.map(t => t[l.field]).filter(Boolean) as string[])].sort().join(',')).join('|')
   const [titles, setTitles] = useState<Record<string, string>>({})
 
   useEffect(() => {
     async function load() {
+      const ids = key.split('|')
       const next: Record<string, string> = {}
-      if (kpiIds) {
-        const { data } = await supabase.from('kpis').select('id, title').in('id', kpiIds.split(','))
-        for (const k of data ?? []) next[`kpi:${k.id}`] = k.title
-      }
-      if (rockIds) {
-        const { data } = await supabase.from('rocks').select('id, title').in('id', rockIds.split(','))
-        for (const r of data ?? []) next[`rock:${r.id}`] = r.title
+      for (const [i, l] of LINKS.entries()) {
+        if (!ids[i]) continue
+        const { data } = await supabase.from(l.table).select('id, title').in('id', ids[i].split(','))
+        for (const row of data ?? []) next[`${l.field}:${row.id}`] = row.title
       }
       setTitles(next)
     }
     void load()
-  }, [kpiIds, rockIds])
+  }, [key])
 
-  return (t: TeamTask) => t.kpi_id
-    ? { kind: 'KPI', title: titles[`kpi:${t.kpi_id}`] }
-    : t.rock_id
-      ? { kind: 'Rock', title: titles[`rock:${t.rock_id}`] }
+  return (t: TeamTask) => {
+    const l = LINKS.find(x => t[x.field])
+    return l
+      ? { kind: l.kind, title: titles[`${l.field}:${t[l.field]}`] }
       : { kind: 'Team Board', title: undefined, unlinked: true }
+  }
 }
 
 function DueLabel({ task }: { task: TeamTask }) {
@@ -126,13 +135,24 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
   const linkOf = useLinkTitles(rows)
   const canEditTask = (t: TeamTask) => t.created_by === me.id || canEdit(t.assigned_to)
   const isOwn = personId === me.id
+  const [adding, setAdding] = useState(false)
 
   return (
     <section className="mt-5">
-      <SectionLabel right={<a href="#/team-board" className="text-xs font-semibold text-blue-600 hover:underline">Team Board</a>}>
-        {isOwn ? 'My tasks' : 'Tasks'} · KPIs, rocks and Team Board
+      <SectionLabel right={
+        <div className="flex items-center gap-3">
+          {canEdit(personId) && (
+            <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+              <Plus size={13} /> Add task
+            </button>
+          )}
+          <a href="#/team-board" className="text-xs font-semibold text-blue-600 hover:underline">Team Board</a>
+        </div>
+      }>
+        {isOwn ? 'My tasks' : 'Tasks'} · rocks, KPIs, goals and Team Board
       </SectionLabel>
       {board.error && <p role="alert" className="text-xs text-red-600 mb-2">{board.error}</p>}
+      {adding && <AddTask board={board} personId={personId} onClose={() => setAdding(false)} />}
       <div className="card overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
@@ -140,7 +160,7 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
               <th className="w-10 px-4 py-3" aria-label="Done" />
               <th className="px-2 py-3">Task</th>
               <th className="px-2 py-3 w-36">Due</th>
-              <th className="px-2 py-3">Advances</th>
+              <th className="px-2 py-3">Supports</th>
               <th className="px-2 py-3 w-32">Source</th>
             </tr>
           </thead>
@@ -172,5 +192,74 @@ export function MyTasksTable({ board, personId }: { board: Board; personId: stri
         </table>
       </div>
     </section>
+  )
+}
+
+// Add a task by hand. It has to support a rock, KPI or goal, or go on the Team Board.
+function AddTask({ board, personId, onClose }: { board: Board; personId: string; onClose: () => void }) {
+  const { me } = useTeam()
+  const cq = currentQuarter()
+  const year = cq.year
+  const { rocks } = useRocks(quarterLabel(cq.q, year), personId)
+  const { kpis } = useKpis(personId)
+  const { goals } = useIndividualGoals(personId, year)
+  const teamGoals = useAnnualGoals(year, me.id).goals
+  const [title, setTitle] = useState('')
+  const [due, setDue] = useState('')
+  const [link, setLink] = useState('')
+  const [team, setTeam] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ok = title.trim() && (link || team) && !saving
+
+  async function save() {
+    if (!ok) return
+    setSaving(true)
+    const [kind, id] = link.split(':')
+    const saved = await board.addTeamTask({
+      title: title.trim(),
+      assigned_to: personId,
+      due_date: due || null,
+      description: null,
+      assigned_in_meeting: false,
+      rock_id: kind === 'rock' ? id : null,
+      kpi_id: kind === 'kpi' ? id : null,
+      // only sent when used, so rock / KPI tasks still save before migration 013
+      ...(kind === 'goal' ? { goal_id: id } : {}),
+      ...(kind === 'team_goal' ? { team_goal_id: id } : {}),
+      ...(team ? {} : { on_team_board: false }),
+    }, me.id)
+    setSaving(false)
+    if (saved) onClose()
+  }
+
+  return (
+    <div className="card p-4 mb-3 border border-blue-100">
+      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_2fr] gap-3">
+        <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onClose() }}
+          placeholder="Task…" className="text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400" />
+        <input type="date" value={due} onChange={e => setDue(e.target.value)} aria-label="Due date"
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white" />
+        <select value={link} onChange={e => setLink(e.target.value)} aria-label="What it supports"
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white" style={{ color: link ? '#1e293b' : '#2563EB' }}>
+          <option value="">Which rock, KPI or goal does it support?</option>
+          {rocks.length > 0 && <optgroup label={`Rocks · ${quarterLabel(cq.q, year)}`}>{rocks.map(r => <option key={r.id} value={`rock:${r.id}`}>{r.title}</option>)}</optgroup>}
+          {kpis.length > 0 && <optgroup label="KPIs">{kpis.map(k => <option key={k.id} value={`kpi:${k.id}`}>{k.title}</option>)}</optgroup>}
+          {goals.length > 0 && <optgroup label={`Annual goals · ${year}`}>{goals.map(g => <option key={g.id} value={`goal:${g.id}`}>{g.title}</option>)}</optgroup>}
+          {teamGoals.length > 0 && <optgroup label={`Team goals · ${year}`}>{teamGoals.map(g => <option key={g.id} value={`team_goal:${g.id}`}>{g.title}</option>)}</optgroup>}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-3">
+        <label className="flex items-center gap-1.5 text-xs text-gray-700">
+          <input type="checkbox" checked={team} onChange={e => setTeam(e.target.checked)} className="accent-blue-600" /> Also put it on the Team Board
+        </label>
+        {!link && !team && title.trim() && <span className="text-[11px] text-amber-700">Pick what it supports, or put it on the Team Board.</span>}
+        <div className="ml-auto flex gap-2">
+          <button onClick={onClose} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+          <button onClick={save} disabled={!ok} className="text-xs font-semibold text-white px-4 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>
+            {saving ? 'Saving…' : 'Add task'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

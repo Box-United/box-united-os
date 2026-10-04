@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { requestMondaySync } from '../lib/mondaySync'
 import type { Department, Kpi, KpiArea } from '../types/database'
 
 // KPI areas + KPIs; pass userId to limit to one person.
@@ -16,6 +17,7 @@ export function useKpis(userId?: string) {
       return true
     }
     setError(null)
+    requestMondaySync()
     return false
   }
 

@@ -15,6 +15,8 @@ const CURRENT = 'current'
 function linkValue(t: Pick<TeamTask, 'kpi_id' | 'rock_id'>) {
   return t.kpi_id ? `kpi:${t.kpi_id}` : t.rock_id ? `rock:${t.rock_id}` : ''
 }
+const isLinked = (t: TeamTask) => Boolean(t.kpi_id || t.rock_id || t.goal_id || t.team_goal_id)
+
 function parseLink(v: string) {
   return { kpi_id: v.startsWith('kpi:') ? v.slice(4) : null, rock_id: v.startsWith('rock:') ? v.slice(5) : null }
 }
@@ -63,13 +65,15 @@ function TeamTasks() {
   const [adding, setAdding] = useState(false)
   const [archiveMsg, setArchiveMsg] = useState<string | null>(null)
 
+  // Monday tasks that are only linked (not ticked Team) stay on their owner's dashboard
+  const teamTasks = useMemo(() => board.tasks.filter(t => t.on_team_board !== false), [board.tasks])
   const months = useMemo(
-    () => [...new Set(board.tasks.map(t => t.archived_month).filter(Boolean) as string[])].sort().reverse(),
-    [board.tasks],
+    () => [...new Set(teamTasks.map(t => t.archived_month).filter(Boolean) as string[])].sort().reverse(),
+    [teamTasks],
   )
-  const rows = board.tasks.filter(t => (view === CURRENT ? !t.archived_month : t.archived_month === view))
-  const doneCount = board.tasks.filter(t => t.status === 'done' && !t.archived_month).length
-  const unalignedCount = rows.filter(t => !t.kpi_id && !t.rock_id && t.status !== 'done').length
+  const rows = teamTasks.filter(t => (view === CURRENT ? !t.archived_month : t.archived_month === view))
+  const doneCount = teamTasks.filter(t => t.status === 'done' && !t.archived_month).length
+  const unalignedCount = rows.filter(t => !isLinked(t) && t.status !== 'done').length
 
   async function archive() {
     const n = await board.archiveCompleted()
@@ -307,7 +311,7 @@ function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: 
   const owner = byId(task.assigned_to)
   const creator = byId(task.created_by)
   const done = task.status === 'done'
-  const linked = task.kpi_id || task.rock_id
+  const linked = isLinked(task)
   const kpi = kpis.find(k => k.id === task.kpi_id)
   const rock = rocks.find(r => r.id === task.rock_id)
   const overdue = !done && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
@@ -370,7 +374,7 @@ function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: 
             {!linked && <UnalignedBadge />}
           </div>
         ) : linked ? (
-          <span className="text-xs text-blue-600">{kpi ? `KPI · ${kpi.title}` : rock ? `Rock · ${rock.title}` : task.kpi_id ? 'KPI' : 'Rock'}</span>
+          <span className="text-xs text-blue-600">{kpi ? `KPI · ${kpi.title}` : rock ? `Rock · ${rock.title}` : task.kpi_id ? 'KPI' : task.rock_id ? 'Rock' : task.team_goal_id ? 'Team goal' : 'Goal'}</span>
         ) : <UnalignedBadge />}
       </td>
       <td className="px-2 py-2.5 text-xs text-gray-400">

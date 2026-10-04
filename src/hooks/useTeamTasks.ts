@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { TeamTask } from '../types/database'
 
 export type NewTeamTask = Pick<TeamTask, 'title' | 'assigned_to' | 'due_date' | 'description' | 'kpi_id' | 'rock_id' | 'assigned_in_meeting'>
+  & Partial<Pick<TeamTask, 'goal_id' | 'team_goal_id' | 'on_team_board'>>
 
 export function useTeamTasks() {
   const [tasks, setTasks] = useState<TeamTask[]>([])

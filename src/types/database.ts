@@ -37,6 +37,9 @@ export interface TeamTask {
   due_date: string | null
   kpi_id: string | null
   rock_id: string | null
+  goal_id?: string | null       // a personal annual goal (migration 013)
+  team_goal_id?: string | null  // a team annual goal (migration 013)
+  on_team_board?: boolean       // false for Monday tasks that are only linked, not Team
   assigned_in_meeting: boolean
   source: 'manual' | 'monday'
   monday_item_id: string | null
@@ -146,6 +149,7 @@ export interface MondayConnection {
   column_map: Record<string, string>
   webhook_ids: string[]
   from_template: boolean
+  last_synced_at?: string | null
   created_at: string
 }
 

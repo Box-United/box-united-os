@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { requestMondaySync } from '../lib/mondaySync'
 import type { Rock, RockStatus } from '../types/database'
 
 // Rocks for one quarter (e.g. "Q3 2026"); pass userId to limit to one person.
@@ -29,7 +30,10 @@ export function useRocks(quarter: string, userId?: string) {
       .select('*')
       .single()
     if (error) setError(error.message.includes('Maximum 3') ? 'The database still limits rocks to 3 a quarter. Run migration 012 to lift it.' : error.message)
-    else if (data) setRocks(r => [...r, data as Rock])
+    else if (data) {
+      setRocks(r => [...r, data as Rock])
+      requestMondaySync()
+    }
   }
 
   async function updateRockStatus(id: string, status: RockStatus) {
@@ -39,7 +43,10 @@ export function useRocks(quarter: string, userId?: string) {
     if (res.error || !res.data?.length) {
       setRocks(before)
       setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this rock.")
-    } else setError(null)
+    } else {
+      setError(null)
+      requestMondaySync()
+    }
   }
 
   async function deleteRock(id: string) {
@@ -49,7 +56,10 @@ export function useRocks(quarter: string, userId?: string) {
     if (res.error || !res.data?.length) {
       setRocks(before)
       setError(res.error ? "Couldn't delete. Check your connection and try again." : "Couldn't delete: you don't have permission to edit this rock.")
-    } else setError(null)
+    } else {
+      setError(null)
+      requestMondaySync()
+    }
   }
 
   return { rocks, loading, error, addRock, updateRockStatus, deleteRock, refetch: fetchRocks }

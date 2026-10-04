@@ -7,6 +7,7 @@ import { KpiPanel } from '../components/dashboard/KpiPanel'
 import { IndividualGoals } from '../components/dashboard/IndividualGoals'
 import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
 import { PersonSettings } from '../components/dashboard/PersonSettings'
+import { MondayButton } from '../components/dashboard/MondayConnect'
 import { DeptTag } from '../components/ui/DeptTag'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
@@ -70,6 +71,7 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
             </div>
           )}
         </div>
+        {isOwn && <MondayButton userId={me.id} onSynced={board.refetch} />}
         {isOwn && <NotificationBell notifications={notifications} />}
       </div>
 

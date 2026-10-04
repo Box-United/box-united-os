@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { requestMondaySync } from '../lib/mondaySync'
 import type { AnnualGoal, Department, GoalStatus } from '../types/database'
 
 export function useAnnualGoals(year: number, loggedInUserId: string) {
@@ -13,6 +14,7 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
       return true
     }
     setError(null)
+    requestMondaySync()
     return false
   }
 
@@ -51,6 +53,7 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
       return null
     }
     setError(null)
+    requestMondaySync()
     setGoals(g => [...g, data as AnnualGoal])
     return data as AnnualGoal
   }
