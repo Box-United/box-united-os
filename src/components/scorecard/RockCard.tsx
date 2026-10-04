@@ -5,6 +5,9 @@ import type { Profile, RockStatus } from '../../types/database'
 import { useTeam, displayName } from '../../lib/team'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
+import { SupportsPicker } from '../ui/SupportsPicker'
+import { useSupportOptions } from '../../hooks/useGoalLinks'
+import { parentValue } from '../../lib/goalLinks'
 
 const ROCK_OPTIONS: RockStatus[] = ['on-track', 'off-track', 'done']
 
@@ -23,14 +26,17 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
   const { canEdit, openDashboard } = useTeam()
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
+  const [parent, setParent] = useState('')
+  const options = useSupportOptions(person.id)
   const mine = rocks.rocks.filter(r => r.user_id === person.id)
   const editable = canEdit(person.id)
   const over = mine.length >= ROCK_TARGET
 
   function save() {
     if (!title.trim()) return
-    rocks.addRock(person.id, title.trim())
+    rocks.addRock(person.id, title.trim(), parent)
     setTitle('')
+    setParent('')
     setAdding(false)
   }
 
@@ -45,8 +51,8 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
       )}
       <ul className="space-y-2">
         {mine.map(r => (
-          <li key={r.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 group">
-            <span className="flex-1 text-sm text-gray-800 leading-snug">{r.title}</span>
+          <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gray-100 px-3 py-2 group">
+            <span className="flex-1 min-w-[120px] text-sm text-gray-800 leading-snug">{r.title}</span>
             <StatusPill status={r.status} small options={editable ? ROCK_OPTIONS : undefined}
               onChange={editable ? s => rocks.updateRockStatus(r.id, s as RockStatus) : undefined} />
             {editable && (
@@ -54,6 +60,11 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
                 <Trash2 size={12} />
               </button>
             )}
+            <span className="basis-full">
+              {editable
+                ? <SupportsPicker compact options={options} value={parentValue(r)} onChange={v => rocks.setRockGoal(r.id, v)} />
+                : parentValue(r) && <span className="text-[11px] text-indigo-700">↑ {options.label(parentValue(r)) ?? 'a goal'}</span>}
+            </span>
           </li>
         ))}
         {mine.length === 0 && !adding && <li className="text-xs text-gray-400">No rocks for {quarter}.</li>}
@@ -62,11 +73,14 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
       {over && <p className="text-[11px] text-amber-700 mt-1">That's {mine.length} rocks. Fewer than {ROCK_TARGET} keeps the quarter focused.</p>}
       {editable && (
         adding ? (
-          <div className="flex gap-2 mt-2">
-            <input autoFocus value={title} onChange={e => setTitle(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setAdding(false) }}
-              placeholder="New rock…" className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none" />
-            <button onClick={save} className="text-xs font-semibold text-white px-3 rounded-lg" style={{ background: '#2563EB' }}>Add</button>
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-2">
+              <input autoFocus value={title} onChange={e => setTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setAdding(false) }}
+                placeholder="New rock…" className="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none" />
+              <button onClick={save} className="text-xs font-semibold text-white px-3 rounded-lg" style={{ background: '#2563EB' }}>Add</button>
+            </div>
+            <SupportsPicker options={options} value={parent} onChange={setParent} />
           </div>
         ) : (
           <button onClick={() => { setAdding(true); setTitle('') }} className="mt-2 flex items-center gap-1 text-xs font-semibold text-blue-600">

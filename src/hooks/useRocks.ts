@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { requestMondaySync } from '../lib/mondaySync'
 import type { Rock, RockStatus } from '../types/database'
+import { parentPatch } from '../lib/goalLinks'
 
 // Rocks for one quarter (e.g. "Q3 2026"); pass userId to limit to one person.
 export function useRocks(quarter: string, userId?: string) {
@@ -22,11 +23,13 @@ export function useRocks(quarter: string, userId?: string) {
     setLoading(false)
   }
 
-  async function addRock(ownerId: string, title: string) {
+  // `parent` is the goal it supports ("team_goal:<id>" / "goal:<id>"), if any
+  async function addRock(ownerId: string, title: string, parent = '') {
     setError(null)
     const { data, error } = await supabase
       .from('rocks')
-      .insert({ user_id: ownerId, title, status: 'on-track', quarter })
+      // links only sent when chosen, so rocks still save before migration 014
+      .insert({ user_id: ownerId, title, status: 'on-track', quarter, ...(parent ? parentPatch(parent, false) : {}) })
       .select('*')
       .single()
     if (error) setError(error.message.includes('Maximum 3') ? 'The database still limits rocks to 3 a quarter. Run migration 012 to lift it.' : error.message)
@@ -36,10 +39,13 @@ export function useRocks(quarter: string, userId?: string) {
     }
   }
 
-  async function updateRockStatus(id: string, status: RockStatus) {
+  const updateRockStatus = (id: string, status: RockStatus) => updateRock(id, { status })
+  const setRockGoal = (id: string, parent: string) => updateRock(id, parentPatch(parent, false))
+
+  async function updateRock(id: string, patch: Partial<Pick<Rock, 'status' | 'team_goal_id' | 'goal_id'>>) {
     const before = rocks
-    setRocks(r => r.map(rock => rock.id === id ? { ...rock, status } : rock))
-    const res = await supabase.from('rocks').update({ status }).eq('id', id).select('id')
+    setRocks(r => r.map(rock => rock.id === id ? { ...rock, ...patch } : rock))
+    const res = await supabase.from('rocks').update(patch).eq('id', id).select('id')
     if (res.error || !res.data?.length) {
       setRocks(before)
       setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this rock.")
@@ -62,5 +68,5 @@ export function useRocks(quarter: string, userId?: string) {
     }
   }
 
-  return { rocks, loading, error, addRock, updateRockStatus, deleteRock, refetch: fetchRocks }
+  return { rocks, loading, error, addRock, updateRockStatus, setRockGoal, deleteRock, refetch: fetchRocks }
 }

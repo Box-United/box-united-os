@@ -33,28 +33,64 @@ const LINKS = [
   { field: 'team_goal_id', table: 'annual_goals', kind: 'Team goal' },
 ] as const
 
+// Where a linked rock or KPI rolls up to: its goal, or (for a KPI) its rock's goal
+type Up = { team_goal_id?: string | null; goal_id?: string | null; rock_id?: string | null }
+
 function useLinkTitles(tasks: TeamTask[]) {
   const key = LINKS.map(l => [...new Set(tasks.map(t => t[l.field]).filter(Boolean) as string[])].sort().join(',')).join('|')
   const [titles, setTitles] = useState<Record<string, string>>({})
+  const [ups, setUps] = useState<Record<string, string>>({})
 
   useEffect(() => {
     async function load() {
       const ids = key.split('|')
       const next: Record<string, string> = {}
+      const parents: Record<string, Up> = {}
       for (const [i, l] of LINKS.entries()) {
         if (!ids[i]) continue
-        const { data } = await supabase.from(l.table).select('id, title').in('id', ids[i].split(','))
-        for (const row of data ?? []) next[`${l.field}:${row.id}`] = row.title
+        const list = ids[i].split(',')
+        // rocks and KPIs also say what they support (migration 014); fall back without it
+        const withParents = l.table === 'rocks' ? 'id, title, team_goal_id, goal_id' : l.table === 'kpis' ? 'id, title, team_goal_id, goal_id, rock_id' : null
+        const rows = (cols: string) =>
+          supabase.from(l.table).select(cols).in('id', list) as unknown as Promise<{ data: ({ id: string; title: string } & Up)[] | null; error: unknown }>
+        let res = await rows(withParents ?? 'id, title')
+        if (res.error && withParents) res = await rows('id, title')
+        for (const row of res.data ?? []) {
+          next[`${l.field}:${row.id}`] = row.title
+          if (withParents) parents[`${l.field}:${row.id}`] = row
+        }
       }
       setTitles(next)
+
+      // KPIs under a rock roll up through that rock's goal
+      const rockIds = Object.values(parents).map(p => p.rock_id).filter(Boolean) as string[]
+      const rockParents: Record<string, Up> = {}
+      if (rockIds.length) {
+        const { data } = await supabase.from('rocks').select('id, team_goal_id, goal_id').in('id', rockIds)
+        for (const r of data ?? []) rockParents[r.id] = r
+      }
+      const goalOf = (p: Up): Up => (p.rock_id ? rockParents[p.rock_id] ?? {} : p)
+      const teamIds = [...new Set(Object.values(parents).map(p => goalOf(p).team_goal_id).filter(Boolean) as string[])]
+      const goalIds = [...new Set(Object.values(parents).map(p => goalOf(p).goal_id).filter(Boolean) as string[])]
+      const goalTitle: Record<string, string> = {}
+      if (teamIds.length) for (const g of (await supabase.from('annual_goals').select('id, title').in('id', teamIds)).data ?? []) goalTitle[`t:${g.id}`] = g.title
+      if (goalIds.length) for (const g of (await supabase.from('individual_goals').select('id, title').in('id', goalIds)).data ?? []) goalTitle[`g:${g.id}`] = g.title
+      const nextUps: Record<string, string> = {}
+      for (const [k, p] of Object.entries(parents)) {
+        const g = goalOf(p)
+        const t = g.team_goal_id ? goalTitle[`t:${g.team_goal_id}`] : g.goal_id ? goalTitle[`g:${g.goal_id}`] : undefined
+        if (t) nextUps[k] = t
+      }
+      setUps(nextUps)
     }
     void load()
   }, [key])
 
   return (t: TeamTask) => {
     const l = LINKS.find(x => t[x.field])
+    const k = l ? `${l.field}:${t[l.field]}` : ''
     return l
-      ? { kind: l.kind, title: titles[`${l.field}:${t[l.field]}`] }
+      ? { kind: l.kind, title: titles[k], up: ups[k] }
       : { kind: 'Team Board', title: undefined, unlinked: true }
   }
 }
@@ -69,11 +105,14 @@ function DueLabel({ task }: { task: TeamTask }) {
   )
 }
 
-function Advances({ link }: { link: { kind: string; title?: string; unlinked?: boolean } }) {
+function Advances({ link }: { link: { kind: string; title?: string; up?: string; unlinked?: boolean } }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 max-w-full ${link.unlinked ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50'}`}>
-      <span className="font-semibold shrink-0">{link.kind}</span>
-      {link.title && <span className="truncate">· {link.title}</span>}
+    <span className="inline-flex flex-col items-start gap-0.5 max-w-full">
+      <span className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 max-w-full ${link.unlinked ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50'}`}>
+        <span className="font-semibold shrink-0">{link.kind}</span>
+        {link.title && <span className="truncate">· {link.title}</span>}
+      </span>
+      {link.up && <span className="text-[11px] text-indigo-700 truncate max-w-full pl-2">↑ {link.up}</span>}
     </span>
   )
 }

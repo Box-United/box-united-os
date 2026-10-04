@@ -4,6 +4,8 @@ import { useIndividualGoals } from '../../hooks/useIndividualGoals'
 import type { KpiStatus } from '../../types/database'
 import { SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { GoalRollup } from '../scorecard/GoalRollup'
+import { useGoalChildren } from '../../hooks/useGoalLinks'
 
 const OPTIONS: KpiStatus[] = ['not-started', 'in-progress', 'on-track', 'off-track', 'done']
 const THIS_YEAR = new Date().getFullYear()
@@ -17,6 +19,7 @@ interface Props {
 export function IndividualGoals({ personId, editable }: Props) {
   const [year, setYear] = useState(THIS_YEAR)
   const { goals, loading, error, clearError, addGoal, updateGoal, deleteGoal } = useIndividualGoals(personId, year)
+  const children = useGoalChildren('personal', goals.map(g => g.id))
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
 
@@ -79,19 +82,22 @@ export function IndividualGoals({ personId, editable }: Props) {
       ) : (
         <ul className="space-y-2">
           {goals.map(g => (
-            <li key={g.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2.5 group">
-              <span className="flex-1 text-sm font-medium text-gray-900 leading-snug">{g.title}</span>
-              <StatusPill
-                status={g.status}
-                small
-                options={editable ? OPTIONS : undefined}
-                onChange={editable ? s => updateGoal(g.id, { status: s as KpiStatus }) : undefined}
-              />
-              {editable && (
-                <button onClick={() => deleteGoal(g.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
-                  <Trash2 size={12} />
-                </button>
-              )}
+            <li key={g.id} className="rounded-lg border border-gray-100 px-3 py-2.5 group">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-sm font-medium text-gray-900 leading-snug">{g.title}</span>
+                <StatusPill
+                  status={g.status}
+                  small
+                  options={editable ? OPTIONS : undefined}
+                  onChange={editable ? s => updateGoal(g.id, { status: s as KpiStatus }) : undefined}
+                />
+                {editable && (
+                  <button onClick={() => deleteGoal(g.id)} aria-label="Delete goal" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+              <GoalRollup {...children.under(g.id)} />
             </li>
           ))}
         </ul>

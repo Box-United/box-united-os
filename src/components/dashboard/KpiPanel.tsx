@@ -7,6 +7,9 @@ import { DEPARTMENTS } from '../../lib/departments'
 import { ProgressBar, SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
 import { DeptSelect, DeptTag } from '../ui/DeptTag'
+import { SupportsPicker } from '../ui/SupportsPicker'
+import { useSupportOptions, type SupportOptions } from '../../hooks/useGoalLinks'
+import { parentPatch, parentValue } from '../../lib/goalLinks'
 
 interface Props {
   kpiState: ReturnType<typeof useKpis>
@@ -33,7 +36,9 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   const [areaUrl, setAreaUrl] = useState('')
   const [dept, setDept] = useState<Department | null>(null)
   const [target, setTarget] = useState('')
+  const [parent, setParent] = useState('')
   const [saving, setSaving] = useState(false)
+  const options = useSupportOptions(personId)
 
   const existing = areas.find(a => a.name.trim().toLowerCase() === areaName.trim().toLowerCase())
   const urlOk = isUrl(areaUrl.trim())
@@ -53,6 +58,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     setAreaUrl('')
     setDept(null)
     setTarget('')
+    setParent('')
     setAdding(false)
   }
 
@@ -65,7 +71,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     if (!area) area = await addArea(personId, areaName.trim(), areaUrl.trim(), dept)
     if (area) {
       const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
-      await addKpi({ ...area, monday_url: areaUrl.trim() }, kpiTitle.trim(), t != null && !isNaN(t) ? t : null)
+      await addKpi({ ...area, monday_url: areaUrl.trim() }, kpiTitle.trim(), t != null && !isNaN(t) ? t : null, parent)
       reset()
     }
     setSaving(false)
@@ -118,6 +124,10 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
                 placeholder="e.g. 30"
                 className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
             </label>
+            <label className="block md:col-span-2">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Supports <span className="font-normal text-gray-400">(optional)</span></span>
+              <SupportsPicker options={options} value={parent} onChange={setParent} withRocks />
+            </label>
             <label className="block">
               <span className="block text-xs font-semibold text-gray-700 mb-1">Link to the Monday board</span>
               <input value={areaUrl} onChange={e => setAreaUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
@@ -151,6 +161,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
               tasks={tasks}
               editable={editable}
               kpiState={kpiState}
+              options={options}
               mondayUrl={area.monday_url || fallbackMondayUrl}
               onDelete={() => deleteArea(area.id)}
             />
@@ -176,11 +187,12 @@ interface AreaProps {
   tasks: TeamTask[]
   editable: boolean
   kpiState: ReturnType<typeof useKpis>
+  options: SupportOptions
   mondayUrl: string | null
   onDelete: () => void
 }
 
-function AreaBlock({ area, kpis, tasks, editable, kpiState, mondayUrl, onDelete }: AreaProps) {
+function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, onDelete }: AreaProps) {
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [target, setTarget] = useState('')
@@ -233,14 +245,14 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, mondayUrl, onDelete 
       {kpis.length === 0 && !adding && <p className="text-xs text-gray-400 py-2">No KPIs in this area yet.</p>}
       <ul>
         {kpis.map(k => (
-          <KpiRow key={k.id} kpi={k} tasks={tasks.filter(t => t.kpi_id === k.id && t.status !== 'done' && !t.archived_month)} editable={editable} kpiState={kpiState} />
+          <KpiRow key={k.id} kpi={k} tasks={tasks.filter(t => t.kpi_id === k.id && t.status !== 'done' && !t.archived_month)} editable={editable} kpiState={kpiState} options={options} />
         ))}
       </ul>
     </div>
   )
 }
 
-function KpiRow({ kpi, tasks, editable, kpiState }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis> }) {
+function KpiRow({ kpi, tasks, editable, kpiState, options }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis>; options: SupportOptions }) {
   const { me } = useTeam()
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
@@ -289,6 +301,11 @@ function KpiRow({ kpi, tasks, editable, kpiState }: { kpi: Kpi; tasks: TeamTask[
             </button>
           )}
         </div>
+      </div>
+      <div className="mt-1">
+        {editable
+          ? <SupportsPicker compact withRocks options={options} value={parentValue(kpi)} onChange={v => kpiState.updateKpi(kpi.id, parentPatch(v, true), me.id)} />
+          : parentValue(kpi) && <span className="text-[11px] text-indigo-700">↑ {options.label(parentValue(kpi)) ?? 'a goal or rock'}</span>}
       </div>
       {tasks.length > 0 && (
         <p className="text-xs text-gray-400 mt-1 truncate">

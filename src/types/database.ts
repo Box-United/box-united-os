@@ -24,6 +24,8 @@ export interface Rock {
   status: RockStatus
   quarter: string
   due_date: string | null
+  team_goal_id?: string | null  // the goal it supports (migration 014)
+  goal_id?: string | null
   created_at: string
 }
 
@@ -57,6 +59,7 @@ export interface AnnualGoal {
   year: number
   owner_id: string | null
   department: Department | null
+  metric_key?: string | null  // the key metric this team goal moves (migration 014)
   created_by: string
   created_at: string
   owner?: Profile | null
@@ -116,6 +119,9 @@ export interface Kpi {
   current: number | null
   status: KpiStatus
   sort_order: number
+  team_goal_id?: string | null  // what it supports: a goal or a rock (migration 014)
+  goal_id?: string | null
+  rock_id?: string | null
   updated_by: string | null
   updated_at: string
   created_at: string

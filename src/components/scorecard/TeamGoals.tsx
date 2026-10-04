@@ -8,6 +8,9 @@ import { SectionLabel } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
 import { DeptSelect, DeptTag } from '../ui/DeptTag'
+import { GoalRollup } from './GoalRollup'
+import { useGoalChildren } from '../../hooks/useGoalLinks'
+import { useKeyMetrics } from '../../hooks/useKeyMetrics'
 
 const GOAL_OPTIONS: GoalStatus[] = ['not-started', 'in-progress', 'on-track', 'done']
 
@@ -27,6 +30,9 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
   const canManage = (g: AnnualGoal) => !g.department || leads.includes(g.department)
   const startDept = defaultDept && leads.includes(defaultDept) ? defaultDept : null
   const { goals: all, loading, error, addGoal, updateGoalStatus, updateGoal, deleteGoal } = useAnnualGoals(year, me.id)
+  // Rocks / KPIs under each goal, and the key metric each goal moves
+  const children = useGoalChildren('team', all.map(g => g.id))
+  const metrics = useKeyMetrics().defs
   const goals = filter ? all.filter(filter) : all
   // Whole-team goals first, then each department's
   const groups = [null, ...DEPARTMENTS.map(d => d.id)]
@@ -135,6 +141,19 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
                         )}
                       </div>
                       {goal.description && expanded && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{goal.description}</p>}
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] text-gray-500">
+                        <span>Moves key metric:</span>
+                        {canManage(goal) ? (
+                          <select value={goal.metric_key ?? ''} onChange={e => updateGoal(goal.id, { metric_key: e.target.value || null })} aria-label="Key metric"
+                            className="text-[11px] rounded-full px-2 py-0.5 bg-gray-50 text-gray-700 outline-none border-none cursor-pointer">
+                            <option value="">None</option>
+                            {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                          </select>
+                        ) : (
+                          <span className="font-semibold text-gray-700">{metrics.find(m => m.key === goal.metric_key)?.label ?? 'None'}</span>
+                        )}
+                      </div>
+                      <GoalRollup {...children.under(goal.id)} />
                     </div>
                   )
                 })}

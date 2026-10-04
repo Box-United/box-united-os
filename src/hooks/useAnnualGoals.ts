@@ -64,7 +64,7 @@ export function useAnnualGoals(year: number, loggedInUserId: string) {
     if (failed(await supabase.from('annual_goals').update({ status }).eq('id', id).select('id'))) setGoals(before)
   }
 
-  async function updateGoal(id: string, updates: { title?: string; description?: string | null; owner_id?: string | null; department?: Department | null }) {
+  async function updateGoal(id: string, updates: { title?: string; description?: string | null; owner_id?: string | null; department?: Department | null; metric_key?: string | null }) {
     const before = goals
     setGoals(g => g.map(goal => goal.id === id ? { ...goal, ...updates } : goal))
     if (failed(await supabase.from('annual_goals').update(updates).eq('id', id).select('id'))) setGoals(before)

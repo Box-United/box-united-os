@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { requestMondaySync } from '../lib/mondaySync'
 import type { Department, Kpi, KpiArea } from '../types/database'
+import { parentPatch } from '../lib/goalLinks'
 
 // KPI areas + KPIs; pass userId to limit to one person.
 export function useKpis(userId?: string) {
@@ -67,7 +68,8 @@ export function useKpis(userId?: string) {
     }
   }
 
-  async function addKpi(area: KpiArea, title: string, target: number | null) {
+  // `parent` is the goal or rock it supports ("team_goal:<id>" / "goal:<id>" / "rock:<id>"), if any
+  async function addKpi(area: KpiArea, title: string, target: number | null, parent = '') {
     const res = await supabase
       .from('kpis')
       .insert({
@@ -78,12 +80,14 @@ export function useKpis(userId?: string) {
         current: target != null ? 0 : null,
         status: 'on-track',
         sort_order: kpis.filter(k => k.area_id === area.id).length,
+        // links only sent when chosen, so KPIs still save before migration 014
+        ...(parent ? parentPatch(parent, true) : {}),
       })
       .select('*')
     if (!failed(res)) setKpis(k => [...k, res.data![0] as Kpi])
   }
 
-  async function updateKpi(id: string, patch: Partial<Pick<Kpi, 'title' | 'target' | 'current' | 'status'>>, editorId: string) {
+  async function updateKpi(id: string, patch: Partial<Pick<Kpi, 'title' | 'target' | 'current' | 'status' | 'team_goal_id' | 'goal_id' | 'rock_id'>>, editorId: string) {
     const full = { ...patch, updated_by: editorId, updated_at: new Date().toISOString() }
     const before = kpis
     setKpis(k => k.map(x => x.id === id ? { ...x, ...full } : x))
