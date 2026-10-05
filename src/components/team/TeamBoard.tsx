@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
 import { TeamRocks, TeamKpis, TeamMetricsAndGoals } from './TeamSections'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
@@ -60,6 +61,28 @@ function TeamTasks() {
   const { kpis } = useKpis()
   const now = currentQuarter()
   const { rocks } = useRocks(quarterLabel(now.q, now.year))
+
+  // Goal titles, so each task can show the goal it ultimately supports
+  const [goalTitles, setGoalTitles] = useState<Record<string, string>>({})
+  useEffect(() => {
+    Promise.all([
+      supabase.from('annual_goals').select('id, title'),
+      supabase.from('individual_goals').select('id, title'),
+    ]).then(([t, g]) => setGoalTitles({
+      ...Object.fromEntries((t.data ?? []).map(x => [`t:${x.id}`, x.title])),
+      ...Object.fromEntries((g.data ?? []).map(x => [`g:${x.id}`, x.title])),
+    }))
+  }, [])
+  // task → its KPI or rock (a KPI may sit under a rock) → that item's goal
+  function goalOf(t: TeamTask) {
+    if (t.team_goal_id) return goalTitles[`t:${t.team_goal_id}`]
+    if (t.goal_id) return goalTitles[`g:${t.goal_id}`]
+    const kpi = kpis.find(k => k.id === t.kpi_id)
+    const parent = kpi?.rock_id ? rocks.find(r => r.id === kpi.rock_id) : kpi ?? rocks.find(r => r.id === t.rock_id)
+    if (parent?.team_goal_id) return goalTitles[`t:${parent.team_goal_id}`]
+    if (parent?.goal_id) return goalTitles[`g:${parent.goal_id}`]
+    return undefined
+  }
 
   const [view, setView] = useState(CURRENT)
   const [adding, setAdding] = useState(false)
@@ -149,6 +172,7 @@ function TeamTasks() {
                 task={t}
                 kpis={kpis}
                 rocks={rocks}
+                goal={goalOf(t)}
                 editable={canEditTask(t) && view === CURRENT}
                 profiles={profiles}
                 onUpdate={patch => board.updateTask(t.id, patch)}
@@ -297,10 +321,11 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
 
 // ---------- existing row ----------
 
-function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: {
+function TaskRow({ task, kpis, rocks, goal, editable, profiles, onUpdate, onDelete }: {
   task: TeamTask
   kpis: Kpi[]
   rocks: Rock[]
+  goal?: string
   editable: boolean
   profiles: ReturnType<typeof useTeam>['profiles']
   onUpdate: (patch: Partial<TeamTask>) => void
@@ -376,6 +401,7 @@ function TaskRow({ task, kpis, rocks, editable, profiles, onUpdate, onDelete }: 
         ) : linked ? (
           <span className="text-xs text-blue-600">{kpi ? `KPI · ${kpi.title}` : rock ? `Rock · ${rock.title}` : task.kpi_id ? 'KPI' : task.rock_id ? 'Rock' : task.team_goal_id ? 'Team goal' : 'Goal'}</span>
         ) : <UnalignedBadge />}
+        {goal && <p className="text-[11px] text-indigo-700 mt-1 truncate">↑ {goal}</p>}
       </td>
       <td className="px-2 py-2.5 text-xs text-gray-400">
         {task.source === 'monday' ? 'Monday' : task.assigned_in_meeting ? 'Meeting' : `Added by ${firstName(creator)}`}

@@ -1,14 +1,17 @@
-import { useState, useRef, type ReactNode } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState, useRef, type ReactNode } from 'react'
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { useGoalChildren } from '../../hooks/useGoalLinks'
 import { useScorecardMetrics } from '../../hooks/useScorecardMetrics'
 import { useKeyMetrics } from '../../hooks/useKeyMetrics'
-import type { Department, KeyMetric, MetricHistory, MetricUnit } from '../../types/database'
+import type { AnnualGoal, Department, KeyMetric, MetricHistory, MetricUnit } from '../../types/database'
 import type { MetricKey, ScorecardMetric } from '../../hooks/useScorecardMetrics'
 import { UNITS, formatMetric } from '../../config/metrics'
 import { useTeam, firstName, shortDate } from '../../lib/team'
 import { DEPARTMENTS, leadsOf } from '../../lib/departments'
 import { SectionLabel, ProgressBar } from '../layout/PageShell'
 import { DeptTag } from '../ui/DeptTag'
+import { StatusPill } from '../ui/StatusPill'
 
 // ---------- metric tile ----------
 
@@ -18,9 +21,11 @@ interface MetricCardProps {
   history: MetricHistory[]
   onUpdate: (key: MetricKey, field: 'actual' | 'target', value: number | null) => void
   onRemove?: () => void
+  // Team goals that move this metric, with how many rocks / KPIs sit under each
+  movedBy: { goal: Pick<AnnualGoal, 'id' | 'title' | 'status'>; rocks: number; kpis: number }[]
 }
 
-function MetricCard({ def, metric, history, onUpdate, onRemove }: MetricCardProps) {
+function MetricCard({ def, metric, history, onUpdate, onRemove, movedBy }: MetricCardProps) {
   const metricKey = def.key
   const { byId } = useTeam()
   const [editingField, setEditingField] = useState<'actual' | 'target' | null>(null)
@@ -129,6 +134,27 @@ function MetricCard({ def, metric, history, onUpdate, onRemove }: MetricCardProp
 
       <div className="mt-4"><ProgressBar pct={pct} tone={pct >= 100 ? 'green' : 'blue'} /></div>
 
+      <div className="mt-3 pt-2 border-t border-gray-100">
+        {movedBy.length === 0 ? (
+          <p className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={11} /> No team goals move this metric yet</p>
+        ) : (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400 mb-1">Moved by</p>
+            <ul className="space-y-1">
+              {movedBy.map(m => (
+                <li key={m.goal.id} className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 min-w-0 truncate text-gray-700">{m.goal.title}</span>
+                  <span className={`text-[11px] ${m.rocks + m.kpis ? 'text-gray-400' : 'text-amber-700'}`}>
+                    {m.rocks + m.kpis ? `${m.rocks} rock${m.rocks === 1 ? '' : 's'} · ${m.kpis} KPI${m.kpis === 1 ? '' : 's'}` : 'nothing under it'}
+                  </span>
+                  <StatusPill status={m.goal.status} small />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+
       <div className="flex items-center justify-between mt-2 text-[11px] text-gray-400">
         <span>
           {metric?.updated_by
@@ -176,6 +202,18 @@ export function KeyMetrics({ year, filter, title = `Key metrics · ${year}`, emp
   const leads = leadsOf(me, profiles)
   const [adding, setAdding] = useState(false)
 
+  // Team goals for the year that point at a key metric, and what sits under them
+  const [goals, setGoals] = useState<Pick<AnnualGoal, 'id' | 'title' | 'status' | 'metric_key'>[]>([])
+  useEffect(() => {
+    supabase.from('annual_goals').select('id, title, status, metric_key').eq('year', year).not('metric_key', 'is', null)
+      .then(({ data }) => setGoals(data ?? []))
+  }, [year])
+  const children = useGoalChildren('team', goals.map(g => g.id))
+  const movedBy = (key: string) => goals.filter(g => g.metric_key === key).map(g => {
+    const u = children.under(g.id)
+    return { goal: g, rocks: u.rocks.length, kpis: u.kpis.length }
+  })
+
   return (
     <section>
       <SectionLabel right={
@@ -201,7 +239,7 @@ export function KeyMetrics({ year, filter, title = `Key metrics · ${year}`, emp
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {shown.map(def => (
-            <MetricCard key={def.key} def={def} metric={metrics.find(m => m.metric_key === def.key)} history={historyFor(def.key)} onUpdate={updateMetric}
+            <MetricCard key={def.key} def={def} metric={metrics.find(m => m.metric_key === def.key)} history={historyFor(def.key)} onUpdate={updateMetric} movedBy={movedBy(def.key)}
               onRemove={list.editable && leads.includes(def.department) ? () => list.removeMetric(def.key) : undefined} />
           ))}
         </div>
