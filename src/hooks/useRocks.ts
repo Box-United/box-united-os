@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { requestMondaySync } from '../lib/mondaySync'
+import { goalDataChanged } from '../lib/linkEvents'
 import type { Rock, RockStatus } from '../types/database'
 import { parentPatch } from '../lib/goalLinks'
 
@@ -35,7 +35,7 @@ export function useRocks(quarter: string, userId?: string) {
     if (error) setError(error.message.includes('Maximum 3') ? 'The database still limits rocks to 3 a quarter. Run migration 012 to lift it.' : error.message)
     else if (data) {
       setRocks(r => [...r, data as Rock])
-      requestMondaySync()
+      goalDataChanged()
     }
   }
 
@@ -51,7 +51,7 @@ export function useRocks(quarter: string, userId?: string) {
       setError(res.error ? "Couldn't save. Check your connection and try again." : "Couldn't save: you don't have permission to edit this rock.")
     } else {
       setError(null)
-      requestMondaySync()
+      goalDataChanged()
     }
   }
 
@@ -64,7 +64,7 @@ export function useRocks(quarter: string, userId?: string) {
       setError(res.error ? "Couldn't delete. Check your connection and try again." : "Couldn't delete: you don't have permission to edit this rock.")
     } else {
       setError(null)
-      requestMondaySync()
+      goalDataChanged()
     }
   }
 

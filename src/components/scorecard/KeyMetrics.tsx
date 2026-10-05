@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
+import { useGoalDataVersion } from '../../lib/linkEvents'
 import { useScorecardMetrics } from '../../hooks/useScorecardMetrics'
 import { useKeyMetrics } from '../../hooks/useKeyMetrics'
 import type { AnnualGoal, Department, KeyMetric, MetricHistory, MetricUnit } from '../../types/database'
@@ -204,10 +205,11 @@ export function KeyMetrics({ year, filter, title = `Key metrics · ${year}`, emp
 
   // Team goals for the year that point at a key metric, and what sits under them
   const [goals, setGoals] = useState<Pick<AnnualGoal, 'id' | 'title' | 'status' | 'metric_key'>[]>([])
+  const version = useGoalDataVersion()
   useEffect(() => {
     supabase.from('annual_goals').select('id, title, status, metric_key').eq('year', year).not('metric_key', 'is', null)
       .then(({ data }) => setGoals(data ?? []))
-  }, [year])
+  }, [year, version])
   const children = useGoalChildren('team', goals.map(g => g.id))
   const movedBy = (key: string) => goals.filter(g => g.metric_key === key).map(g => {
     const u = children.under(g.id)

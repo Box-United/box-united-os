@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { currentQuarter, quarterLabel } from '../lib/team'
+import { useGoalDataVersion } from '../lib/linkEvents'
 import type { AnnualGoal, IndividualGoal, Kpi, Rock } from '../types/database'
 
 export interface SupportOptions {
@@ -16,6 +17,7 @@ export function useSupportOptions(ownerId: string): SupportOptions {
   const [teamGoals, setTeamGoals] = useState<SupportOptions['teamGoals']>([])
   const [goals, setGoals] = useState<SupportOptions['goals']>([])
   const [rocks, setRocks] = useState<SupportOptions['rocks']>([])
+  const version = useGoalDataVersion()
 
   useEffect(() => {
     if (!ownerId) return
@@ -29,7 +31,7 @@ export function useSupportOptions(ownerId: string): SupportOptions {
       setGoals(g.data ?? [])
       setRocks(r.data ?? [])
     })
-  }, [ownerId])
+  }, [ownerId, version])
 
   function label(value: string) {
     const [kind, id] = value.split(':')
@@ -47,10 +49,11 @@ export interface GoalChildren {
 
 // Rocks and KPIs that sit under the given goals (KPIs under those rocks too).
 // `kind` is which goal table the ids belong to. Empty until migration 014.
-export function useGoalChildren(kind: 'team' | 'personal', goalIds: string[], refreshKey = 0) {
+export function useGoalChildren(kind: 'team' | 'personal', goalIds: string[]) {
   const field = kind === 'team' ? 'team_goal_id' : 'goal_id'
   const key = [...goalIds].sort().join(',')
   const [children, setChildren] = useState<GoalChildren>({ rocks: [], kpis: [] })
+  const version = useGoalDataVersion()
 
   useEffect(() => {
     const ids = key ? key.split(',') : []
@@ -72,7 +75,7 @@ export function useGoalChildren(kind: 'team' | 'personal', goalIds: string[], re
       setChildren({ rocks, kpis })
     }
     void load()
-  }, [field, key, refreshKey])
+  }, [field, key, version])
 
   // Everything under one goal: its rocks, its own KPIs, and the KPIs under those rocks
   function under(goalId: string) {

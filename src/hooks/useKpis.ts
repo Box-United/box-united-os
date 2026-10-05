@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { requestMondaySync } from '../lib/mondaySync'
+import { goalDataChanged } from '../lib/linkEvents'
 import type { Department, Kpi, KpiArea } from '../types/database'
 import { parentPatch } from '../lib/goalLinks'
 
@@ -18,7 +18,7 @@ export function useKpis(userId?: string) {
       return true
     }
     setError(null)
-    requestMondaySync()
+    goalDataChanged()
     return false
   }
 

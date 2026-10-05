@@ -9,6 +9,7 @@ import { useAnnualGoals } from '../../hooks/useAnnualGoals'
 import type { TeamTask } from '../../types/database'
 import { useTeam, firstName, shortDate, currentQuarter, quarterLabel } from '../../lib/team'
 import { SectionLabel } from '../layout/PageShell'
+import { useGoalDataVersion } from '../../lib/linkEvents'
 
 type Board = ReturnType<typeof useTeamTasks>
 
@@ -40,6 +41,7 @@ function useLinkTitles(tasks: TeamTask[]) {
   const key = LINKS.map(l => [...new Set(tasks.map(t => t[l.field]).filter(Boolean) as string[])].sort().join(',')).join('|')
   const [titles, setTitles] = useState<Record<string, string>>({})
   const [ups, setUps] = useState<Record<string, string>>({})
+  const version = useGoalDataVersion()
 
   useEffect(() => {
     async function load() {
@@ -84,7 +86,7 @@ function useLinkTitles(tasks: TeamTask[]) {
       setUps(nextUps)
     }
     void load()
-  }, [key])
+  }, [key, version])
 
   return (t: TeamTask) => {
     const l = LINKS.find(x => t[x.field])

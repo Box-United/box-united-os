@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { requestMondaySync } from '../lib/mondaySync'
+import { goalDataChanged } from '../lib/linkEvents'
 import type { IndividualGoal } from '../types/database'
 
 // A person's own annual goals (separate from the team goals on the Scorecard).
@@ -33,7 +33,7 @@ export function useIndividualGoals(userId: string, year: number) {
       return true
     }
     setError(null)
-    requestMondaySync()
+    goalDataChanged()
     return false
   }
 

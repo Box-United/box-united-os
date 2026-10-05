@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useGoalDataVersion } from '../../lib/linkEvents'
 import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
 import { TeamRocks, TeamKpis, TeamMetricsAndGoals } from './TeamSections'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
@@ -64,6 +65,7 @@ function TeamTasks() {
 
   // Goal titles, so each task can show the goal it ultimately supports
   const [goalTitles, setGoalTitles] = useState<Record<string, string>>({})
+  const version = useGoalDataVersion()
   useEffect(() => {
     Promise.all([
       supabase.from('annual_goals').select('id, title'),
@@ -72,7 +74,7 @@ function TeamTasks() {
       ...Object.fromEntries((t.data ?? []).map(x => [`t:${x.id}`, x.title])),
       ...Object.fromEntries((g.data ?? []).map(x => [`g:${x.id}`, x.title])),
     }))
-  }, [])
+  }, [version])
   // task → its KPI or rock (a KPI may sit under a rock) → that item's goal
   function goalOf(t: TeamTask) {
     if (t.team_goal_id) return goalTitles[`t:${t.team_goal_id}`]
