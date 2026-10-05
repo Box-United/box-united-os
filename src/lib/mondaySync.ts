@@ -11,3 +11,13 @@ export function requestMondaySync() {
     supabase.functions.invoke('monday-sync', { body: { action: 'sync_os' } }).catch(() => null)
   }, 3000)
 }
+
+// Mirror a task added or changed in the OS onto its owner's Monday board (if connected)
+export function pushTaskToMonday(taskId: string) {
+  supabase.functions.invoke('monday-sync', { body: { action: 'push_task', task_id: taskId } }).catch(() => null)
+}
+
+// A deleted task's Monday item gets archived
+export function removeTaskFromMonday(mondayItemId: string) {
+  supabase.functions.invoke('monday-sync', { body: { action: 'remove_task', monday_item_id: mondayItemId } }).catch(() => null)
+}

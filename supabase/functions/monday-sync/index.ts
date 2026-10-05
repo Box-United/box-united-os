@@ -14,9 +14,13 @@
 //     linked to one of those items (Rock / KPI / Goal column) or its Team box is
 //     ticked. Linked tasks show on the person's dashboard; Team tasks also go on
 //     the Team Board. Unlink and untick it and it leaves the OS again.
+//   OS → Monday, tasks: a task added or assigned in the OS (Team Board or
+//     "+ Add task") is created on its owner's connected Monday board, with its
+//     link, Team box, due date and done tick; later changes in the OS update it.
 //
 // Signed-in actions (POST { action }):
-//   list_boards · create_from_template · add_columns · link_board · sync · sync_os · disconnect
+//   list_boards · create_from_template · add_columns · link_board · sync · sync_os ·
+//   push_task · remove_task · disconnect
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
 // ---------------------------------------------------------------------------
@@ -160,12 +164,33 @@ async function handleAction(req: Request) {
       case 'sync_os':
         return json({ synced: await syncOsItems(db) })
 
-      // Refresh the shared board, and re-read this person's board
+      // Refresh the shared board, re-read this person's board, and copy over any
+      // open OS tasks of theirs that aren't on it yet
       case 'sync': {
         const synced = await syncOsItems(db)
         const { data: conn } = await db.from('monday_connections').select('*').eq('user_id', user.id).maybeSingle()
         const imported = conn ? await importBoard(db, conn as Connection) : 0
+        if (conn) {
+          const { data: missing } = await db.from('team_tasks').select('id')
+            .eq('assigned_to', user.id).is('monday_item_id', null).neq('status', 'done').is('archived_month', null)
+          for (const t of missing ?? []) await pushTask(db, t.id)
+        }
         return json({ synced, imported })
+      }
+
+      // A task was added or changed in the OS
+      case 'push_task':
+        return json({ result: await pushTask(db, String(body.task_id ?? '')) })
+
+      // A task with a Monday item was deleted in the OS: archive the item
+      case 'remove_task': {
+        const itemId = String(body.monday_item_id ?? '')
+        const { data: still } = await db.from('team_tasks').select('id').eq('monday_item_id', itemId).maybeSingle()
+        if (!itemId || still) return json({ ok: true, skipped: 'task still exists' })
+        const board = await itemBoard(itemId)
+        const { data: conn } = board ? await db.from('monday_connections').select('user_id').eq('board_id', board).maybeSingle() : { data: null }
+        if (conn) await monday(`mutation ($i: ID!) { archive_item(item_id: $i) { id } }`, { i: itemId }).catch(() => null)
+        return json({ ok: true })
       }
 
       case 'disconnect': {
@@ -413,7 +438,88 @@ async function applyItem(db: SupabaseClient, conn: Connection, item: MondayItem)
   }
 
   const { data: existing } = await db.from('team_tasks').select('id').eq('monday_item_id', item.id).maybeSingle()
-  if (existing) await db.from('team_tasks').update(row).eq('id', existing.id)
-  else await db.from('team_tasks').insert({ ...row, created_by: conn.user_id, assigned_in_meeting: false })
+  if (existing) {
+    // Tasks that started in the OS keep their source ("Meeting", "Added by …")
+    const { source: _source, ...update } = row
+    await db.from('team_tasks').update(update).eq('id', existing.id)
+  } else {
+    await db.from('team_tasks').insert({ ...row, created_by: conn.user_id, assigned_in_meeting: false })
+  }
   return 'synced'
+}
+
+// ---------------------------------------------------------------------------
+// OS → Monday, tasks: mirror an OS task onto its owner's connected board
+
+async function itemBoard(itemId: string) {
+  const d = await monday<{ items: { state: string; board: { id: string } }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { state board { id } } }`, { ids: [itemId] },
+  )
+  const it = d.items[0]
+  return it && it.state !== 'deleted' ? String(it.board.id) : null
+}
+
+async function pushTask(db: SupabaseClient, taskId: string) {
+  const { data: task } = await db.from('team_tasks').select('*').eq('id', taskId).maybeSingle()
+  if (!task || task.archived_month) return 'skipped'
+  const { data: conn } = task.assigned_to
+    ? await db.from('monday_connections').select('*').eq('user_id', task.assigned_to).maybeSingle()
+    : { data: null }
+
+  // Where the task's Monday item lives now, if it has one
+  let onBoard = task.monday_item_id ? await itemBoard(task.monday_item_id) : null
+  if (onBoard && onBoard !== conn?.board_id) {
+    // Started on someone's own Monday board: leave it there
+    if (task.source === 'monday') return 'skipped'
+    // Reassigned in the OS: take it off the previous owner's board
+    await monday(`mutation ($i: ID!) { archive_item(item_id: $i) { id } }`, { i: task.monday_item_id }).catch(() => null)
+    onBoard = null
+  }
+  if (!conn) {
+    if (task.monday_item_id) await db.from('team_tasks').update({ monday_item_id: null }).eq('id', task.id)
+    return 'not connected'
+  }
+
+  const map = (conn.column_map ?? {}) as ColumnMap
+  const cols = await boardColumns(conn.board_id)
+  const doneCol = cols.find(c => c.id === map.done)
+  let doneValue: unknown = null
+  if (task.status === 'done' && doneCol) {
+    if (doneCol.type === 'checkbox') doneValue = { checked: 'true' }
+    else {
+      const labels = Object.values(JSON.parse(doneCol.settings_str || '{}').labels ?? {}) as string[]
+      doneValue = { label: labels.find(l => /done|complete/i.test(l)) ?? 'Done' }
+    }
+  }
+  // The shared-board item for what the task supports
+  const kind: Kind | null = task.rock_id ? 'rock' : task.kpi_id ? 'kpi' : task.goal_id ? 'goal' : task.team_goal_id ? 'team_goal' : null
+  const osId = kind ? task[`${kind}_id`] : null
+  const { data: mapped } = kind ? await db.from('monday_items').select('monday_item_id').eq('os_kind', kind).eq('os_id', osId).maybeSingle() : { data: null }
+
+  const values: Record<string, unknown> = {}
+  if (map.due) values[map.due] = task.due_date ? { date: task.due_date } : null
+  if (map.done) values[map.done] = doneValue
+  if (map.team) values[map.team] = task.on_team_board !== false ? { checked: 'true' } : null
+  if (map.link) values[map.link] = { item_ids: mapped ? [Number(mapped.monday_item_id)] : [] }
+
+  if (onBoard) {
+    await monday(
+      `mutation ($b: ID!, $i: ID!, $v: JSON!) { change_multiple_column_values(board_id: $b, item_id: $i, column_values: $v) { id } }`,
+      { b: conn.board_id, i: task.monday_item_id, v: JSON.stringify({ ...values, name: task.title }) },
+    )
+    return 'updated'
+  }
+
+  const created = await monday<{ create_item: { id: string } }>(
+    `mutation ($b: ID!, $n: String!, $v: JSON!) { create_item(board_id: $b, item_name: $n, column_values: $v) { id } }`,
+    { b: conn.board_id, n: task.title, v: JSON.stringify(values) },
+  )
+  const itemId = String(created.create_item.id)
+  // Monday's "item created" webhook can race this and add its own copy; drop it, then claim the item
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await db.from('team_tasks').delete().eq('monday_item_id', itemId).neq('id', task.id)
+    const { error } = await db.from('team_tasks').update({ monday_item_id: itemId }).eq('id', task.id)
+    if (!error) break
+  }
+  return 'created'
 }

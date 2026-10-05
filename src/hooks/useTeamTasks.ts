@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { TeamTask } from '../types/database'
+import { pushTaskToMonday, removeTaskFromMonday } from '../lib/mondaySync'
 
 export type NewTeamTask = Pick<TeamTask, 'title' | 'assigned_to' | 'due_date' | 'description' | 'kpi_id' | 'rock_id' | 'assigned_in_meeting'>
   & Partial<Pick<TeamTask, 'goal_id' | 'team_goal_id' | 'on_team_board'>>
@@ -37,6 +38,7 @@ export function useTeamTasks() {
       return false
     }
     setTasks(t => [...t, data as TeamTask])
+    pushTaskToMonday((data as TeamTask).id)
     return true
   }
 
@@ -52,15 +54,19 @@ export function useTeamTasks() {
     }
     // pick up trigger-set fields (completed_at, archived_month)
     setTasks(t => t.map(task => task.id === id ? (data[0] as TeamTask) : task))
+    pushTaskToMonday(id)
   }
 
   async function deleteTeamTask(id: string) {
     const before = tasks
+    const mondayItemId = tasks.find(t => t.id === id)?.monday_item_id
     setTasks(t => t.filter(task => task.id !== id))
     const { data, error } = await supabase.from('team_tasks').delete().eq('id', id).select('id')
     if (error || !data?.length) {
       setTasks(before)
       setError("You can't delete this task. Only its creator, owner or the owner's manager can.")
+    } else if (mondayItemId) {
+      removeTaskFromMonday(mondayItemId)
     }
   }
 
