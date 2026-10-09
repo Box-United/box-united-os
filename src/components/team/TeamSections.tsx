@@ -72,7 +72,7 @@ export function TeamKpis() {
           </div>
         }
       >
-        Individual KPIs · summary
+        Individual KPIs · {quarterLabel(currentQuarter().q, currentQuarter().year)}
       </SectionLabel>
       <div className="card divide-y divide-gray-50">
         {orgOrder(profiles).map(({ person: p }) => {
@@ -93,8 +93,8 @@ export function TeamKpis() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
+                {count('not-started') > 0 && <span className="status-pill not-started">{count('not-started')} not started</span>}
                 {count('on-track') > 0 && <span className="status-pill on-track">{count('on-track')} on track</span>}
-                {count('in-progress') > 0 && <span className="status-pill in-progress">{count('in-progress')} in progress</span>}
                 {count('off-track') > 0 && <span className="status-pill off-track">{count('off-track')} off track</span>}
                 {count('done') > 0 && <span className="status-pill goal-done">{count('done')} done</span>}
                 {mine.length === 0 && <span className="text-xs text-gray-400">0 KPIs</span>}

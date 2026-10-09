@@ -7,12 +7,11 @@ import { DEPARTMENTS, deptInfo, leadsOf } from '../../lib/departments'
 import { SectionLabel } from '../layout/PageShell'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { DeptSelect, DeptTag } from '../ui/DeptTag'
 import { GoalRollup } from './GoalRollup'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
 import { useKeyMetrics } from '../../hooks/useKeyMetrics'
-
-const GOAL_OPTIONS: GoalStatus[] = ['not-started', 'in-progress', 'on-track', 'done']
 
 interface Props {
   year: number
@@ -127,7 +126,7 @@ export function TeamGoals({ year, filter, defaultDept = null, footer }: Props) {
                         {canManage(goal)
                           ? <DeptSelect value={goal.department} only={leads} onChange={d => updateGoal(goal.id, { department: d })} />
                           : <DeptTag dept={goal.department} />}
-                        <StatusPill status={goal.status} options={canManage(goal) ? GOAL_OPTIONS : undefined}
+                        <StatusPill status={goal.status} options={canManage(goal) ? PROGRESS_OPTIONS : undefined}
                           onChange={canManage(goal) ? s => updateGoalStatus(goal.id, s as GoalStatus) : undefined} />
                         {goal.description && (
                           <button onClick={() => setExpandedId(expanded ? null : goal.id)} aria-label="Show description" className="text-gray-300 hover:text-gray-500">

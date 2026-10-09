@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react'
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
 import { useGoalDataVersion } from '../../lib/linkEvents'
@@ -21,12 +21,16 @@ interface MetricCardProps {
   metric: ScorecardMetric | undefined
   history: MetricHistory[]
   onUpdate: (key: MetricKey, field: 'actual' | 'target', value: number | null) => void
+  // Only for the department's lead (or the executive director)
   onRemove?: () => void
+  onEdit?: (patch: { label: string; unit: MetricUnit }) => void
+  onMoveLeft?: () => void
+  onMoveRight?: () => void
   // Team goals that move this metric, with how many rocks / KPIs sit under each
   movedBy: { goal: Pick<AnnualGoal, 'id' | 'title' | 'status'>; rocks: number; kpis: number }[]
 }
 
-function MetricCard({ def, metric, history, onUpdate, onRemove, movedBy }: MetricCardProps) {
+function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLeft, onMoveRight, movedBy }: MetricCardProps) {
   const metricKey = def.key
   const { byId } = useTeam()
   const [editingField, setEditingField] = useState<'actual' | 'target' | null>(null)
@@ -34,6 +38,9 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, movedBy }: Metri
   const [showHistory, setShowHistory] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [name, setName] = useState(def.label)
+  const [unit, setUnit] = useState<MetricUnit>(def.unit)
   const config = { label: def.label, department: def.department, format: (v: number) => formatMetric(def.unit, v) }
 
   const actual = metric?.actual ?? 0
@@ -82,23 +89,58 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, movedBy }: Metri
 
   return (
     <div className="card p-5 min-w-0 flex flex-col group">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">{config.label}</span>
-        <span className="ml-auto"><DeptTag dept={config.department} /></span>
-        {onRemove && (
-          confirmRemove ? (
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <button onClick={onRemove} className="font-semibold text-red-600">Remove</button>
-              <button onClick={() => setConfirmRemove(false)} className="text-gray-400">Keep</button>
+      {renaming && onEdit ? (
+        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+          <input autoFocus value={name} onChange={e => setName(e.target.value)} aria-label="Metric name"
+            onKeyDown={e => { if (e.key === 'Enter' && name.trim()) { onEdit({ label: name.trim(), unit }); setRenaming(false) } if (e.key === 'Escape') setRenaming(false) }}
+            className="flex-1 min-w-[120px] text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-blue-400" />
+          <select value={unit} onChange={e => setUnit(e.target.value as MetricUnit)} aria-label="Counted in"
+            className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 bg-white">
+            {UNITS.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
+          </select>
+          <button onClick={() => setRenaming(false)} className="text-[11px] text-gray-400 px-1">Cancel</button>
+          <button disabled={!name.trim()} onClick={() => { onEdit({ label: name.trim(), unit }); setRenaming(false) }}
+            className="text-[11px] font-semibold text-white px-2 py-1 rounded-md disabled:opacity-40" style={{ background: '#2563EB' }}>Save</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">{config.label}</span>
+          <span className="ml-auto"><DeptTag dept={config.department} /></span>
+          {(onEdit || onMoveLeft || onMoveRight) && !confirmRemove && (
+            <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+              {onMoveLeft && (
+                <button onClick={onMoveLeft} aria-label={`Move ${config.label} left`} title="Move left" className="text-gray-300 hover:text-blue-600">
+                  <ChevronLeft size={14} />
+                </button>
+              )}
+              {onMoveRight && (
+                <button onClick={onMoveRight} aria-label={`Move ${config.label} right`} title="Move right" className="text-gray-300 hover:text-blue-600">
+                  <ChevronRight size={14} />
+                </button>
+              )}
+              {onEdit && (
+                <button onClick={() => { setName(def.label); setUnit(def.unit); setRenaming(true) }} aria-label={`Rename ${config.label}`} title="Rename or change unit"
+                  className="text-gray-300 hover:text-blue-600 ml-0.5">
+                  <Pencil size={12} />
+                </button>
+              )}
             </span>
-          ) : (
-            <button onClick={() => setConfirmRemove(true)} aria-label={`Remove ${config.label}`}
-              className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">
-              <Trash2 size={12} />
-            </button>
-          )
-        )}
-      </div>
+          )}
+          {onRemove && (
+            confirmRemove ? (
+              <span className="flex items-center gap-1.5 text-[11px]">
+                <button onClick={onRemove} className="font-semibold text-red-600">Remove</button>
+                <button onClick={() => setConfirmRemove(false)} className="text-gray-400">Keep</button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmRemove(true)} aria-label={`Remove ${config.label}`}
+                className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-gray-300 hover:text-red-400">
+                <Trash2 size={12} />
+              </button>
+            )
+          )}
+        </div>
+      )}
 
       <div className="flex items-end gap-3 mt-2">
         <div className="flex-1 min-w-0">
@@ -240,10 +282,20 @@ export function KeyMetrics({ year, filter, title = `Key metrics · ${year}`, emp
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{shown.map(m => <div key={m.key} className="card h-44 animate-pulse" />)}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {shown.map(def => (
-            <MetricCard key={def.key} def={def} metric={metrics.find(m => m.metric_key === def.key)} history={historyFor(def.key)} onUpdate={updateMetric} movedBy={movedBy(def.key)}
-              onRemove={list.editable && leads.includes(def.department) ? () => list.removeMetric(def.key) : undefined} />
-          ))}
+          {shown.map((def, i) => {
+            const manages = list.editable && leads.includes(def.department)
+            // Moving goes past the neighbouring card on screen; positions are in the full list
+            const others = list.defs.filter(m => m.key !== def.key)
+            const prev = shown[i - 1]
+            const next = shown[i + 1]
+            return (
+              <MetricCard key={def.key} def={def} metric={metrics.find(m => m.metric_key === def.key)} history={historyFor(def.key)} onUpdate={updateMetric} movedBy={movedBy(def.key)}
+                onRemove={manages ? () => list.removeMetric(def.key) : undefined}
+                onEdit={manages ? patch => list.editMetric(def.key, patch) : undefined}
+                onMoveLeft={manages && prev ? () => list.moveMetric(def.key, others.indexOf(prev)) : undefined}
+                onMoveRight={manages && next ? () => list.moveMetric(def.key, others.indexOf(next) + 1) : undefined} />
+            )
+          })}
         </div>
       )}
     </section>

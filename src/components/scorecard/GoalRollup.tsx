@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import type { Kpi, Rock } from '../../types/database'
 import { useTeam, firstName } from '../../lib/team'
+import { kpiPeriodLabel } from '../../hooks/useKpis'
 import { StatusPill } from '../ui/StatusPill'
 
 // The rocks and KPIs that sit under one goal (KPIs under those rocks are indented)
@@ -20,6 +21,7 @@ export function GoalRollup({ rocks, kpis }: { rocks: Rock[]; kpis: Kpi[] }) {
       <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-purple-600 w-9 shrink-0">KPI</span>
       <span className="flex-1 min-w-0 truncate text-gray-700">{k.title}</span>
       {k.target != null && <span className="tabular-nums text-gray-500">{(k.current ?? 0).toLocaleString()}/{k.target.toLocaleString()}</span>}
+      {k.quarter && <span className="text-gray-400">{kpiPeriodLabel(k)}</span>}
       <span className="text-gray-400 hidden sm:inline">{firstName(byId(k.user_id))}</span>
       <StatusPill status={k.status} small />
     </li>

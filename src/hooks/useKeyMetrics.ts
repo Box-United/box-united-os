@@ -12,12 +12,14 @@ export function useKeyMetrics() {
   const [editable, setEditable] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const reload = () => fetchDefs().then(({ data, error }) => {
+    if (error) return
+    setDefs((data as KeyMetric[]) ?? [])
+    setEditable(true)
+  })
+
   useEffect(() => {
-    fetchDefs().then(({ data, error }) => {
-      if (error) return
-      setDefs((data as KeyMetric[]) ?? [])
-      setEditable(true)
-    })
+    reload()
   }, [])
 
   async function addMetric(label: string, department: Department, unit: MetricUnit) {
@@ -46,5 +48,25 @@ export function useKeyMetrics() {
     }
   }
 
-  return { defs, editable, error, addMetric, removeMetric }
+  // Rename a metric or change what it's counted in
+  async function editMetric(key: string, patch: Partial<Pick<KeyMetric, 'label' | 'unit'>>) {
+    setError(null)
+    const before = defs
+    setDefs(d => d.map(m => m.key === key ? { ...m, ...patch } : m))
+    const { data, error } = await supabase.from('key_metrics').update(patch).eq('key', key).select('key')
+    if (error || !data?.length) {
+      setDefs(before)
+      setError("Couldn't save it: only the department's lead or the executive director can edit it.")
+    }
+  }
+
+  // Put a metric at `toIndex` among the others (in the full list)
+  async function moveMetric(key: string, toIndex: number) {
+    setError(null)
+    const { error } = await supabase.rpc('move_key_metric', { metric: key, to_index: toIndex })
+    if (error) setError(error.message.includes('move_key_metric') ? 'Moving metrics needs the latest database update (migration 016).' : "Couldn't move it: only the department's lead or the executive director can.")
+    await reload()
+  }
+
+  return { defs, editable, error, addMetric, removeMetric, editMetric, moveMetric }
 }

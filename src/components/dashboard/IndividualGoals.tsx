@@ -4,10 +4,10 @@ import { useIndividualGoals } from '../../hooks/useIndividualGoals'
 import type { KpiStatus } from '../../types/database'
 import { SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { GoalRollup } from '../scorecard/GoalRollup'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
 
-const OPTIONS: KpiStatus[] = ['not-started', 'in-progress', 'on-track', 'off-track', 'done']
 const THIS_YEAR = new Date().getFullYear()
 
 interface Props {
@@ -88,7 +88,7 @@ export function IndividualGoals({ personId, editable }: Props) {
                 <StatusPill
                   status={g.status}
                   small
-                  options={editable ? OPTIONS : undefined}
+                  options={editable ? PROGRESS_OPTIONS : undefined}
                   onChange={editable ? s => updateGoal(g.id, { status: s as KpiStatus }) : undefined}
                 />
                 {editable && (

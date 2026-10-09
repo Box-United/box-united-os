@@ -1,3 +1,4 @@
+// 'in-progress' stays for task statuses and reviews signed before migration 016
 export const STATUS_LABELS: Record<string, string> = {
   'not-started': 'Not started',
   'in-progress': 'In progress',

@@ -1,13 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { goalDataChanged } from '../lib/linkEvents'
 import type { Department, Kpi, KpiArea } from '../types/database'
 import { parentPatch } from '../lib/goalLinks'
+import { currentQuarter } from '../lib/team'
 
-// KPI areas + KPIs; pass userId to limit to one person.
-export function useKpis(userId?: string) {
+// The quarter being looked at. Annual KPIs for its year show alongside that
+// quarter's quarterly KPIs.
+export interface KpiPeriod { year: number; q: number }
+
+export function currentPeriod(): KpiPeriod {
+  const { q, year } = currentQuarter()
+  return { year, q }
+}
+
+// Before migration 016 KPIs have no year; treat them as this year's annual KPIs
+const yearOf = (k: Kpi) => k.year ?? new Date().getFullYear()
+
+export function inPeriod(k: Kpi, p: KpiPeriod) {
+  return yearOf(k) === p.year && (k.quarter == null || k.quarter === p.q)
+}
+
+// Where a KPI counts: "Q2 2026" for a quarterly KPI, "2026" for an annual one
+export function kpiPeriodLabel(k: Pick<Kpi, 'year' | 'quarter'>) {
+  return k.quarter ? `Q${k.quarter} ${k.year}` : String(k.year)
+}
+
+// KPI areas + KPIs; pass userId to limit to one person. `kpis` is just the
+// given period's (the current quarter unless you pass one, or null for all);
+// `allKpis` has every period.
+export function useKpis(userId?: string, period: KpiPeriod | null = currentPeriod()) {
   const [areas, setAreas] = useState<KpiArea[]>([])
-  const [kpis, setKpis] = useState<Kpi[]>([])
+  const [allKpis, setKpis] = useState<Kpi[]>([])
+  const [py, pq] = [period?.year, period?.q]
+  const kpis = useMemo(() => (py != null && pq != null ? allKpis.filter(k => inPeriod(k, { year: py, q: pq })) : allKpis), [allKpis, py, pq])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,7 +85,7 @@ export function useKpis(userId?: string) {
   }
 
   async function deleteArea(id: string) {
-    const [beforeA, beforeK] = [areas, kpis]
+    const [beforeA, beforeK] = [areas, allKpis]
     setAreas(a => a.filter(x => x.id !== id))
     setKpis(k => k.filter(x => x.area_id !== id))
     if (failed(await supabase.from('kpi_areas').delete().eq('id', id).select('id'))) {
@@ -68,8 +94,9 @@ export function useKpis(userId?: string) {
     }
   }
 
-  // `parent` is the goal or rock it supports ("team_goal:<id>" / "goal:<id>" / "rock:<id>"), if any
-  async function addKpi(area: KpiArea, title: string, target: number | null, parent = '') {
+  // `parent` is the goal or rock it supports ("team_goal:<id>" / "goal:<id>" / "rock:<id>"), if any.
+  // `when` is the year, plus the quarter for a KPI that resets every quarter.
+  async function addKpi(area: KpiArea, title: string, target: number | null, when: { year: number; quarter: number | null }, parent = '') {
     const res = await supabase
       .from('kpis')
       .insert({
@@ -78,8 +105,10 @@ export function useKpis(userId?: string) {
         title,
         target,
         current: target != null ? 0 : null,
-        status: 'on-track',
-        sort_order: kpis.filter(k => k.area_id === area.id).length,
+        status: 'not-started',
+        sort_order: allKpis.filter(k => k.area_id === area.id).length,
+        year: when.year,
+        quarter: when.quarter,
         // links only sent when chosen, so KPIs still save before migration 014
         ...(parent ? parentPatch(parent, true) : {}),
       })
@@ -87,18 +116,38 @@ export function useKpis(userId?: string) {
     if (!failed(res)) setKpis(k => [...k, res.data![0] as Kpi])
   }
 
-  async function updateKpi(id: string, patch: Partial<Pick<Kpi, 'title' | 'target' | 'current' | 'status' | 'team_goal_id' | 'goal_id' | 'rock_id'>>, editorId: string) {
+  // Start a quarter from another quarter's KPIs (same KPIs and targets, counts at 0).
+  // Used to fill in past quarters; the OS copies each quarter forward on its own.
+  async function copyKpis(from: Kpi[], to: { year: number; quarter: number | null }) {
+    const res = await supabase
+      .from('kpis')
+      .insert(from.map(k => ({
+        area_id: k.area_id,
+        user_id: k.user_id,
+        title: k.title,
+        target: k.target,
+        current: k.target != null ? 0 : null,
+        status: 'not-started',
+        sort_order: k.sort_order,
+        year: to.year,
+        quarter: to.quarter,
+      })))
+      .select('*')
+    if (!failed(res)) setKpis(k => [...k, ...(res.data as Kpi[])])
+  }
+
+  async function updateKpi(id: string, patch: Partial<Pick<Kpi, 'title' | 'target' | 'current' | 'status' | 'team_goal_id' | 'goal_id' | 'rock_id' | 'year' | 'quarter'>>, editorId: string) {
     const full = { ...patch, updated_by: editorId, updated_at: new Date().toISOString() }
-    const before = kpis
+    const before = allKpis
     setKpis(k => k.map(x => x.id === id ? { ...x, ...full } : x))
     if (failed(await supabase.from('kpis').update(full).eq('id', id).select('id'))) setKpis(before)
   }
 
   async function deleteKpi(id: string) {
-    const before = kpis
+    const before = allKpis
     setKpis(k => k.filter(x => x.id !== id))
     if (failed(await supabase.from('kpis').delete().eq('id', id).select('id'))) setKpis(before)
   }
 
-  return { areas, kpis, loading, error, clearError: () => setError(null), addArea, updateArea, deleteArea, addKpi, updateKpi, deleteKpi, refetch: fetchAll }
+  return { areas, kpis, allKpis, loading, error, clearError: () => setError(null), addArea, updateArea, deleteArea, addKpi, copyKpis, updateKpi, deleteKpi, refetch: fetchAll }
 }

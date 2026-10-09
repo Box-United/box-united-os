@@ -47,6 +47,19 @@ export interface GoalChildren {
   kpis: Kpi[]
 }
 
+// A quarterly KPI is copied into each new quarter; under a goal, show only its latest copy
+function latestCopies(kpis: Kpi[]) {
+  const key = (k: Kpi) => `${k.user_id}|${k.title.trim().toLowerCase()}`
+  const at = (k: Kpi) => k.year * 4 + (k.quarter ?? 0)
+  const latest = new Map<string, Kpi>()
+  for (const k of kpis) {
+    if (!k.quarter) continue
+    const cur = latest.get(key(k))
+    if (!cur || at(k) > at(cur)) latest.set(key(k), k)
+  }
+  return kpis.filter(k => !k.quarter || latest.get(key(k)) === k)
+}
+
 // Rocks and KPIs that sit under the given goals (KPIs under those rocks too).
 // `kind` is which goal table the ids belong to. Empty until migration 014.
 export function useGoalChildren(kind: 'team' | 'personal', goalIds: string[]) {
@@ -72,7 +85,7 @@ export function useGoalChildren(kind: 'team' | 'personal', goalIds: string[]) {
         const viaRock = await supabase.from('kpis').select('*').in('rock_id', rocks.map(x => x.id)).order('created_at')
         kpis = [...kpis, ...((viaRock.data as Kpi[]) ?? [])]
       }
-      setChildren({ rocks, kpis })
+      setChildren({ rocks, kpis: latestCopies(kpis) })
     }
     void load()
   }, [field, key, version])

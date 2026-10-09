@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { TeamTask } from '../types/database'
+import type { RecurringTask, TeamTask } from '../types/database'
 import { pushTaskToMonday, removeTaskFromMonday } from '../lib/mondaySync'
+import { rollForward } from '../lib/rollForward'
 
 export type NewTeamTask = Pick<TeamTask, 'title' | 'assigned_to' | 'due_date' | 'description' | 'kpi_id' | 'rock_id' | 'assigned_in_meeting'>
   & Partial<Pick<TeamTask, 'goal_id' | 'team_goal_id' | 'on_team_board'>>
 
+export type NewRecurringTask = Omit<RecurringTask, 'id' | 'made_count' | 'last_date' | 'created_at'>
+
 export function useTeamTasks() {
   const [tasks, setTasks] = useState<TeamTask[]>([])
+  // Repeating schedules, so tasks they made can say how they repeat
+  const [recurring, setRecurring] = useState<RecurringTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,6 +29,9 @@ export function useTeamTasks() {
       .order('created_at', { ascending: true })
     setTasks((data as TeamTask[]) ?? [])
     setLoading(false)
+    // empty until migration 016
+    const rules = await supabase.from('recurring_tasks').select('*')
+    setRecurring((rules.data as RecurringTask[]) ?? [])
   }
 
   async function addTeamTask(task: NewTeamTask, createdBy: string) {
@@ -70,16 +78,36 @@ export function useTeamTasks() {
     }
   }
 
-  // Move every completed, not-yet-archived task into the month it was completed.
-  async function archiveCompleted() {
-    const done = tasks.filter(t => t.status === 'done' && !t.archived_month)
-    for (const t of done) {
-      const month = (t.completed_at ?? new Date().toISOString()).slice(0, 7)
-      await supabase.from('team_tasks').update({ archived_month: month }).eq('id', t.id)
+  // Set up a repeating task; the OS makes the first one (and each one after) itself
+  async function addRecurring(rule: NewRecurringTask) {
+    setError(null)
+    const { error } = await supabase.from('recurring_tasks').insert(rule)
+    if (error) {
+      setError(error.message.includes('recurring_tasks') ? 'Repeating tasks need the latest database update (migration 016).' : error.message)
+      return false
     }
+    await rollForward()
     await fetchAll()
-    return done.length
+    return true
   }
 
-  return { tasks, loading, error, setError, addTeamTask, updateTask, deleteTeamTask, archiveCompleted, refetch: fetchAll }
+  // Stop a repeating task: its open tasks go too; finished ones stay as a record
+  async function deleteSeries(recurringId: string) {
+    setError(null)
+    const before = tasks
+    const open = tasks.filter(t => t.recurring_id === recurringId && t.status !== 'done')
+    setTasks(t => t.filter(task => !open.some(o => o.id === task.id)))
+    const del = await supabase.from('team_tasks').delete().eq('recurring_id', recurringId).neq('status', 'done').select('id')
+    const rule = await supabase.from('recurring_tasks').delete().eq('id', recurringId).select('id')
+    if (del.error || rule.error || !rule.data?.length) {
+      setTasks(before)
+      setError("You can't stop this repeating task. Only its creator, owner or the owner's manager can.")
+      await fetchAll()
+      return
+    }
+    setRecurring(r => r.filter(x => x.id !== recurringId))
+    for (const t of open) if (t.monday_item_id) removeTaskFromMonday(t.monday_item_id)
+  }
+
+  return { tasks, recurring, loading, error, setError, addTeamTask, addRecurring, updateTask, deleteTeamTask, deleteSeries, refetch: fetchAll }
 }

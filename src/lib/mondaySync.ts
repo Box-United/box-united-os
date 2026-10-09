@@ -21,3 +21,13 @@ export function pushTaskToMonday(taskId: string) {
 export function removeTaskFromMonday(mondayItemId: string) {
   supabase.functions.invoke('monday-sync', { body: { action: 'remove_task', monday_item_id: mondayItemId } }).catch(() => null)
 }
+
+// Mirror several tasks, one at a time so their Monday items don't race each
+// other. `syncFirst` refreshes the shared board first (e.g. after KPIs were
+// copied into a new quarter, so the tasks can link to the new items).
+export async function pushTasksToMonday(taskIds: string[], syncFirst = false) {
+  if (syncFirst) await supabase.functions.invoke('monday-sync', { body: { action: 'sync_os' } }).catch(() => null)
+  for (const id of taskIds) {
+    await supabase.functions.invoke('monday-sync', { body: { action: 'push_task', task_id: id } }).catch(() => null)
+  }
+}

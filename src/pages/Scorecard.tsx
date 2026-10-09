@@ -24,7 +24,8 @@ export function Scorecard() {
   const quarter = quarterLabel(q, year)
 
   const rocks = useRocks(quarter, me.id)
-  const kpis = useKpis(me.id)
+  // KPIs follow the same quarter and year as rocks
+  const kpis = useKpis(me.id, { year, q })
   const { tasks } = useTeamTasks()
 
   const isExec = me.role === 'executive_director'
@@ -48,10 +49,13 @@ export function Scorecard() {
             Your KPIs and rocks, plus the metrics and team goals for {isExec ? 'every department' : deptNames || 'your departments'}
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
-          {years.map(y => (
-            <button key={y} onClick={() => setYear(y)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={pill(year === y)}>{y}</button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+            {years.map(y => (
+              <button key={y} onClick={() => setYear(y)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={pill(year === y)}>{y}</button>
+            ))}
+          </div>
+          <QuarterPills q={q} onChange={setQ} />
         </div>
       </div>
 
@@ -71,9 +75,9 @@ export function Scorecard() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
-          <KpiPanel kpiState={kpis} tasks={tasks} editable personId={me.id} fallbackMondayUrl={null} />
+          <KpiPanel kpiState={kpis} tasks={tasks} editable personId={me.id} fallbackMondayUrl={null} period={{ year, q }} />
           <section className="self-start">
-            <SectionLabel right={<QuarterPills q={q} onChange={setQ} />}>My rocks · {quarter}</SectionLabel>
+            <SectionLabel>My rocks · {quarter}</SectionLabel>
             {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
             <RockCard person={me} rocks={rocks} quarter={quarter} showName={false} />
           </section>

@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { ExternalLink, Plus, Trash2 } from 'lucide-react'
-import type { useKpis } from '../../hooks/useKpis'
+import { Copy, ExternalLink, Plus, Trash2 } from 'lucide-react'
+import { currentPeriod, kpiPeriodLabel, type KpiPeriod, type useKpis } from '../../hooks/useKpis'
 import type { Department, Kpi, KpiArea, KpiStatus, TeamTask } from '../../types/database'
-import { useTeam } from '../../lib/team'
+import { useTeam, quarterLabel } from '../../lib/team'
 import { DEPARTMENTS } from '../../lib/departments'
 import { ProgressBar, SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { DeptSelect, DeptTag } from '../ui/DeptTag'
 import { SupportsPicker } from '../ui/SupportsPicker'
 import { useSupportOptions, type SupportOptions } from '../../hooks/useGoalLinks'
@@ -17,32 +18,60 @@ interface Props {
   editable: boolean
   personId: string
   fallbackMondayUrl: string | null
+  // The quarter being looked at; its year's annual KPIs show too
+  period: KpiPeriod
 }
 
-const KPI_OPTIONS: KpiStatus[] = ['not-started', 'in-progress', 'on-track', 'off-track', 'done']
 const TONE: Record<KpiStatus, 'blue' | 'green' | 'amber' | 'red'> = {
-  'not-started': 'blue', 'in-progress': 'amber', 'on-track': 'green', 'off-track': 'red', done: 'blue',
+  'not-started': 'blue', 'on-track': 'green', 'off-track': 'red', done: 'blue',
 }
+
+// Annual KPIs count toward the year; quarterly ones start over each quarter
+type Cadence = 'annual' | 'quarterly'
+const cadenceOf = (k: Kpi): Cadence => (k.quarter ? 'quarterly' : 'annual')
+const whenFor = (c: Cadence, p: KpiPeriod) => ({ year: p.year, quarter: c === 'quarterly' ? p.q : null })
+const periodIndex = (year: number, q: number) => year * 4 + q
 
 function isUrl(s: string) {
   try { return ['http:', 'https:'].includes(new URL(s).protocol) } catch { return false }
 }
 
-export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUrl }: Props) {
-  const { areas, kpis, loading, error, addArea, updateArea, addKpi, deleteArea } = kpiState
+// The closest quarter that has quarterly KPIs, to copy into an empty past quarter
+function nearestQuarterSet(all: Kpi[], p: KpiPeriod) {
+  const byQuarter = new Map<number, Kpi[]>()
+  for (const k of all) {
+    if (!k.quarter) continue
+    const i = periodIndex(k.year, k.quarter)
+    byQuarter.set(i, [...(byQuarter.get(i) ?? []), k])
+  }
+  const here = periodIndex(p.year, p.q)
+  const best = [...byQuarter.keys()].sort((a, b) => Math.abs(a - here) - Math.abs(b - here) || b - a)[0]
+  return best == null ? null : byQuarter.get(best)!
+}
+
+export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUrl, period }: Props) {
+  const { areas, kpis, allKpis, loading, error, addArea, updateArea, addKpi, copyKpis, deleteArea } = kpiState
   const [adding, setAdding] = useState(false)
   const [kpiTitle, setKpiTitle] = useState('')
   const [areaName, setAreaName] = useState('')
   const [areaUrl, setAreaUrl] = useState('')
   const [dept, setDept] = useState<Department | null>(null)
   const [target, setTarget] = useState('')
+  const [cadence, setCadence] = useState<Cadence>('annual')
   const [parent, setParent] = useState('')
   const [saving, setSaving] = useState(false)
   const options = useSupportOptions(personId)
 
   const existing = areas.find(a => a.name.trim().toLowerCase() === areaName.trim().toLowerCase())
-  const urlOk = isUrl(areaUrl.trim())
+  // The Monday board link is optional
+  const urlOk = areaUrl.trim() === '' || isUrl(areaUrl.trim())
   const canSave = kpiTitle.trim() && areaName.trim() && urlOk && !saving
+
+  // An empty past quarter can start from another quarter's set (to fill in history)
+  const now = currentPeriod()
+  const isPast = periodIndex(period.year, period.q) < periodIndex(now.year, now.q)
+  const copySource = editable && isPast && !kpis.some(k => k.quarter) ? nearestQuarterSet(allKpis, period) : null
+  const [copying, setCopying] = useState(false)
 
   // Picking an existing program area fills in its Monday board link and department
   function onAreaChange(v: string) {
@@ -58,6 +87,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     setAreaUrl('')
     setDept(null)
     setTarget('')
+    setCadence('annual')
     setParent('')
     setAdding(false)
   }
@@ -65,16 +95,24 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   async function save() {
     if (!canSave) return
     setSaving(true)
+    const url = areaUrl.trim() || null
     let area = existing ?? null
-    if (area && area.monday_url !== areaUrl.trim()) await updateArea(area.id, { monday_url: areaUrl.trim() })
+    if (area && url && area.monday_url !== url) await updateArea(area.id, { monday_url: url })
     if (area && dept && area.department !== dept) await updateArea(area.id, { department: dept })
-    if (!area) area = await addArea(personId, areaName.trim(), areaUrl.trim(), dept)
+    if (!area) area = await addArea(personId, areaName.trim(), url, dept)
     if (area) {
       const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
-      await addKpi({ ...area, monday_url: areaUrl.trim() }, kpiTitle.trim(), t != null && !isNaN(t) ? t : null, parent)
+      await addKpi(area, kpiTitle.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period), parent)
       reset()
     }
     setSaving(false)
+  }
+
+  async function copyIn() {
+    if (!copySource) return
+    setCopying(true)
+    await copyKpis(copySource, { year: period.year, quarter: period.q })
+    setCopying(false)
   }
 
   return (
@@ -86,7 +124,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
           </button>
         )}
       >
-        Individual KPIs
+        Individual KPIs · {quarterLabel(period.q, period.year)}
       </SectionLabel>
 
       {error && <SaveError text={error} onDismiss={kpiState.clearError} />}
@@ -124,12 +162,20 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
                 placeholder="e.g. 30"
                 className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
             </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Counts start over</span>
+              <select value={cadence} onChange={e => setCadence(e.target.value as Cadence)}
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400">
+                <option value="annual">Every year · counts toward {period.year}</option>
+                <option value="quarterly">Every quarter · counts toward {quarterLabel(period.q, period.year)}</option>
+              </select>
+            </label>
             <label className="block md:col-span-2">
               <span className="block text-xs font-semibold text-gray-700 mb-1">Supports <span className="font-normal text-gray-400">(optional)</span></span>
               <SupportsPicker options={options} value={parent} onChange={setParent} withRocks />
             </label>
             <label className="block">
-              <span className="block text-xs font-semibold text-gray-700 mb-1">Link to the Monday board</span>
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Link to the Monday board <span className="font-normal text-gray-400">(optional)</span></span>
               <input value={areaUrl} onChange={e => setAreaUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
                 placeholder="https://boxunited.monday.com/boards/…"
                 className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
@@ -145,11 +191,20 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
         </div>
       )}
 
+      {copySource && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 px-3 py-2.5 mb-4 text-xs text-gray-600">
+          <span className="flex-1 min-w-[180px]">No quarterly KPIs for {quarterLabel(period.q, period.year)} yet. Start from the {kpiPeriodLabel(copySource[0])} set? Same KPIs and targets, counts at 0.</span>
+          <button onClick={copyIn} disabled={copying} className="flex items-center gap-1 font-semibold text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1 disabled:opacity-50">
+            <Copy size={12} /> {copying ? 'Copying…' : `Copy ${copySource.length} KPI${copySource.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">{[1, 2].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
       ) : areas.length === 0 ? (
         <p className="text-sm text-gray-400 py-2">
-          {editable ? 'Use "Add program area" to add a KPI, the program area it belongs to, and that area\'s Monday board.' : 'No KPIs set up yet.'}
+          {editable ? 'Use "Add program area" to add a KPI and the program area it belongs to.' : 'No KPIs set up yet.'}
         </p>
       ) : (
         <div className="space-y-5">
@@ -163,6 +218,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
               kpiState={kpiState}
               options={options}
               mondayUrl={area.monday_url || fallbackMondayUrl}
+              period={period}
               onDelete={() => deleteArea(area.id)}
             />
           ))}
@@ -189,20 +245,23 @@ interface AreaProps {
   kpiState: ReturnType<typeof useKpis>
   options: SupportOptions
   mondayUrl: string | null
+  period: KpiPeriod
   onDelete: () => void
 }
 
-function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, onDelete }: AreaProps) {
+function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, period, onDelete }: AreaProps) {
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [target, setTarget] = useState('')
+  const [cadence, setCadence] = useState<Cadence>('annual')
 
   function add() {
     if (!title.trim()) return
     const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
-    kpiState.addKpi(area, title.trim(), t != null && !isNaN(t) ? t : null)
+    kpiState.addKpi(area, title.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period))
     setTitle('')
     setTarget('')
+    setCadence('annual')
     setAdding(false)
   }
 
@@ -213,12 +272,10 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
         {editable
           ? <DeptSelect value={area.department} onChange={d => kpiState.updateArea(area.id, { department: d })} noneLabel="No department" />
           : <DeptTag dept={area.department} />}
-        {mondayUrl ? (
+        {mondayUrl && (
           <a href={mondayUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline">
             Monday board <ExternalLink size={10} />
           </a>
-        ) : (
-          <span className="text-[11px] text-amber-700">no Monday board linked</span>
         )}
         {editable && (
           <div className="ml-auto flex items-center gap-2">
@@ -238,26 +295,34 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
             placeholder="KPI (e.g. 30 schools submit surveys)" className="flex-1 min-w-[180px] text-sm outline-none border border-gray-200 rounded-lg px-3 py-1.5" />
           <input value={target} onChange={e => setTarget(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
             placeholder="Target # (optional)" inputMode="decimal" className="w-36 text-sm outline-none border border-gray-200 rounded-lg px-3 py-1.5" />
+          <select value={cadence} onChange={e => setCadence(e.target.value as Cadence)} aria-label="Counts start over"
+            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+            <option value="annual">Every year</option>
+            <option value="quarterly">Every quarter</option>
+          </select>
           <button onClick={add} disabled={!title.trim()} className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: '#2563EB' }}>Add</button>
         </div>
       )}
 
-      {kpis.length === 0 && !adding && <p className="text-xs text-gray-400 py-2">No KPIs in this area yet.</p>}
+      {kpis.length === 0 && !adding && <p className="text-xs text-gray-400 py-2">No KPIs here for {quarterLabel(period.q, period.year)}.</p>}
       <ul>
         {kpis.map(k => (
-          <KpiRow key={k.id} kpi={k} tasks={tasks.filter(t => t.kpi_id === k.id && t.status !== 'done' && !t.archived_month)} editable={editable} kpiState={kpiState} options={options} />
+          <KpiRow key={k.id} kpi={k} tasks={tasks.filter(t => t.kpi_id === k.id && t.status !== 'done' && !t.archived_month)} editable={editable} kpiState={kpiState} options={options} period={period} />
         ))}
       </ul>
     </div>
   )
 }
 
-function KpiRow({ kpi, tasks, editable, kpiState, options }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis>; options: SupportOptions }) {
+function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis>; options: SupportOptions; period: KpiPeriod }) {
   const { me } = useTeam()
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
   const numeric = kpi.target != null
   const pct = numeric && kpi.target ? ((kpi.current ?? 0) / kpi.target) * 100 : 0
+  // Past quarters are history: they keep how they were counted
+  const now = currentPeriod()
+  const canSwitch = editable && periodIndex(period.year, period.q) >= periodIndex(now.year, now.q)
 
   function commit() {
     const n = val.trim() === '' ? null : Number(val.replace(/[,$]/g, ''))
@@ -289,10 +354,21 @@ function KpiRow({ kpi, tasks, editable, kpiState, options }: { kpi: Kpi; tasks: 
               </button>
             )
           )}
+          {canSwitch ? (
+            <select value={cadenceOf(kpi)} aria-label="Counts start over"
+              title={kpi.quarter ? `Counts toward ${kpiPeriodLabel(kpi)}, then start over next quarter` : `Counts toward ${kpi.year}, then start over next year`}
+              onChange={e => kpiState.updateKpi(kpi.id, whenFor(e.target.value as Cadence, period), me.id)}
+              className="text-[11px] text-gray-500 bg-gray-50 rounded-full px-2 py-0.5 outline-none border-none appearance-none cursor-pointer">
+              <option value="annual">Yearly</option>
+              <option value="quarterly">Quarterly</option>
+            </select>
+          ) : (
+            <span className="text-[11px] text-gray-500 bg-gray-50 rounded-full px-2 py-0.5">{kpi.quarter ? 'Quarterly' : 'Yearly'}</span>
+          )}
           <StatusPill
             status={kpi.status}
             small
-            options={editable ? KPI_OPTIONS : undefined}
+            options={editable ? PROGRESS_OPTIONS : undefined}
             onChange={editable ? s => kpiState.updateKpi(kpi.id, { status: s as KpiStatus }, me.id) : undefined}
           />
           {editable && (

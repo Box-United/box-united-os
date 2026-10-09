@@ -15,8 +15,9 @@
 //     ticked. Linked tasks show on the person's dashboard; Team tasks also go on
 //     the Team Board. Unlink and untick it and it leaves the OS again.
 //   OS → Monday, tasks: a task added or assigned in the OS (Team Board or
-//     "+ Add task") is created on its owner's connected Monday board, with its
-//     link, Team box, due date and done tick; later changes in the OS update it.
+//     "+ Add task", linked or not) is created on its owner's connected Monday
+//     board, with its link, Team box, due date and done tick; later changes on
+//     either side keep the two in step.
 //
 // Signed-in actions (POST { action }):
 //   list_boards · create_from_template · add_columns · link_board · sync · sync_os ·
@@ -267,12 +268,18 @@ async function saveConnection(db: SupabaseClient, userId: string, boardId: strin
 
 interface OsThing { kind: Kind; id: string; name: string; ownerId: string | null; period: string; done: boolean }
 
+// Today's year and quarter in Central time
+function thisQuarter() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }))
+  return { year: now.getFullYear(), q: Math.floor(now.getMonth() / 3) + 1 }
+}
+
 async function syncOsItems(db: SupabaseClient) {
-  const year = new Date().getFullYear()
+  const { year, q } = thisQuarter()
   const [profiles, rocks, kpis, areas, goals, teamGoals, mapped] = await Promise.all([
     db.from('profiles').select('id, full_name, email'),
     db.from('rocks').select('id, user_id, title, status, quarter'),
-    db.from('kpis').select('id, user_id, area_id, title, status'),
+    db.from('kpis').select('id, user_id, area_id, title, status, year, quarter'),
     db.from('kpi_areas').select('id, name'),
     db.from('individual_goals').select('id, user_id, title, status, year').gte('year', year),
     db.from('annual_goals').select('id, owner_id, title, status, year').gte('year', year),
@@ -288,10 +295,14 @@ async function syncOsItems(db: SupabaseClient) {
   const areaName = new Map((areas.data ?? []).map(a => [a.id, a.name]))
   // Rocks for this year and later ("Q4 2026")
   const currentRocks = (rocks.data ?? []).filter(r => Number(String(r.quarter).split(' ')[1]) >= year)
+  // This year's annual KPIs and this quarter's quarterly ones (each quarter gets its own copy)
+  const currentKpis = (kpis.data ?? []).filter(k => (k.quarter ? k.year * 4 + k.quarter >= year * 4 + q : (k.year ?? year) >= year))
+  const kpiPeriod = (k: { area_id: string; year: number; quarter: number | null }) =>
+    [areaName.get(k.area_id), k.quarter ? `Q${k.quarter} ${k.year}` : k.year].filter(Boolean).join(' · ')
 
   const things: OsThing[] = [
     ...currentRocks.map(r => ({ kind: 'rock' as Kind, id: r.id, name: label(first(r.user_id), r.title), ownerId: r.user_id, period: r.quarter, done: r.status === 'done' })),
-    ...(kpis.data ?? []).map(k => ({ kind: 'kpi' as Kind, id: k.id, name: label(first(k.user_id), k.title), ownerId: k.user_id, period: areaName.get(k.area_id) ?? '', done: k.status === 'done' })),
+    ...currentKpis.map(k => ({ kind: 'kpi' as Kind, id: k.id, name: label(first(k.user_id), k.title), ownerId: k.user_id, period: kpiPeriod(k), done: k.status === 'done' })),
     ...(goals.data ?? []).map(g => ({ kind: 'goal' as Kind, id: g.id, name: label(first(g.user_id), g.title), ownerId: g.user_id, period: String(g.year), done: g.status === 'done' })),
     ...(teamGoals.data ?? []).map(g => ({ kind: 'team_goal' as Kind, id: g.id, name: label('Team', g.title), ownerId: g.owner_id, period: String(g.year), done: g.status === 'done' })),
   ]
@@ -337,7 +348,7 @@ async function syncOsItems(db: SupabaseClient) {
     changed++
   }
 
-  // Anything deleted in the OS (or a past quarter's rock) comes off the shared board
+  // Anything deleted in the OS (or a past quarter's rock or KPI) comes off the shared board
   for (const gone of byKey.values()) {
     await monday(`mutation ($i: ID!) { delete_item(item_id: $i) { id } }`, { i: gone.monday_item_id }).catch(() => null)
     await db.from('monday_items').delete().eq('monday_item_id', gone.monday_item_id)
@@ -414,9 +425,11 @@ async function applyItem(db: SupabaseClient, conn: Connection, item: MondayItem)
     link = (data?.[0] as Link | undefined) ?? null
   }
   const team = checked(col(map.team))
+  const { data: existing } = await db.from('team_tasks').select('id, source').eq('monday_item_id', item.id).maybeSingle()
 
-  if (!link && !team) {
-    // Not linked and not Team: it stays in Monday only
+  if (!link && !team && existing?.source !== 'manual') {
+    // Started in Monday, not linked and not Team: it stays in Monday only.
+    // (Tasks that started in the OS stay in the OS, linked or not.)
     await db.from('team_tasks').delete().eq('monday_item_id', item.id).eq('source', 'monday')
     return 'skipped'
   }
@@ -437,7 +450,6 @@ async function applyItem(db: SupabaseClient, conn: Connection, item: MondayItem)
     team_goal_id: link?.os_kind === 'team_goal' ? link.os_id : null,
   }
 
-  const { data: existing } = await db.from('team_tasks').select('id').eq('monday_item_id', item.id).maybeSingle()
   if (existing) {
     // Tasks that started in the OS keep their source ("Meeting", "Added by …")
     const { source: _source, ...update } = row
@@ -494,7 +506,15 @@ async function pushTask(db: SupabaseClient, taskId: string) {
   // The shared-board item for what the task supports
   const kind: Kind | null = task.rock_id ? 'rock' : task.kpi_id ? 'kpi' : task.goal_id ? 'goal' : task.team_goal_id ? 'team_goal' : null
   const osId = kind ? task[`${kind}_id`] : null
-  const { data: mapped } = kind ? await db.from('monday_items').select('monday_item_id').eq('os_kind', kind).eq('os_id', osId).maybeSingle() : { data: null }
+  const findMapped = async () => kind
+    ? (await db.from('monday_items').select('monday_item_id').eq('os_kind', kind).eq('os_id', osId).maybeSingle()).data
+    : null
+  let mapped = await findMapped()
+  // Just added (e.g. this quarter's copy of a KPI): put it on the shared board first
+  if (kind && !mapped) {
+    await syncOsItems(db)
+    mapped = await findMapped()
+  }
 
   const values: Record<string, unknown> = {}
   if (map.due) values[map.due] = task.due_date ? { date: task.due_date } : null

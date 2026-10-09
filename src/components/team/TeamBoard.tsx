@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useGoalDataVersion } from '../../lib/linkEvents'
-import { AlertTriangle, Archive, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
 import { TeamRocks, TeamKpis, TeamMetricsAndGoals } from './TeamSections'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
 import { useKpis } from '../../hooks/useKpis'
@@ -9,6 +9,7 @@ import { useRocks } from '../../hooks/useRocks'
 import type { Kpi, Rock, TeamTask } from '../../types/database'
 import { useTeam, currentQuarter, quarterLabel, firstName, monthKey, monthLabel, shortDate } from '../../lib/team'
 import { PageShell, PageHeader } from '../layout/PageShell'
+import { doneMonth, isCurrent, pastMonths } from '../../lib/tasks'
 import { Avatar } from '../ui/Avatar'
 
 const CURRENT = 'current'
@@ -59,7 +60,8 @@ export function TeamBoard() {
 function TeamTasks() {
   const { me, profiles, canEdit } = useTeam()
   const board = useTeamTasks()
-  const { kpis } = useKpis()
+  // Pick from this quarter's KPIs; older tasks can still name last quarter's
+  const { kpis, allKpis } = useKpis()
   const now = currentQuarter()
   const { rocks } = useRocks(quarterLabel(now.q, now.year))
 
@@ -79,7 +81,7 @@ function TeamTasks() {
   function goalOf(t: TeamTask) {
     if (t.team_goal_id) return goalTitles[`t:${t.team_goal_id}`]
     if (t.goal_id) return goalTitles[`g:${t.goal_id}`]
-    const kpi = kpis.find(k => k.id === t.kpi_id)
+    const kpi = allKpis.find(k => k.id === t.kpi_id)
     const parent = kpi?.rock_id ? rocks.find(r => r.id === kpi.rock_id) : kpi ?? rocks.find(r => r.id === t.rock_id)
     if (parent?.team_goal_id) return goalTitles[`t:${parent.team_goal_id}`]
     if (parent?.goal_id) return goalTitles[`g:${parent.goal_id}`]
@@ -88,22 +90,13 @@ function TeamTasks() {
 
   const [view, setView] = useState(CURRENT)
   const [adding, setAdding] = useState(false)
-  const [archiveMsg, setArchiveMsg] = useState<string | null>(null)
 
-  // Monday tasks that are only linked (not ticked Team) stay on their owner's dashboard
+  // Tasks that aren't ticked Team stay on their owner's dashboard
   const teamTasks = useMemo(() => board.tasks.filter(t => t.on_team_board !== false), [board.tasks])
-  const months = useMemo(
-    () => [...new Set(teamTasks.map(t => t.archived_month).filter(Boolean) as string[])].sort().reverse(),
-    [teamTasks],
-  )
-  const rows = teamTasks.filter(t => (view === CURRENT ? !t.archived_month : t.archived_month === view))
-  const doneCount = teamTasks.filter(t => t.status === 'done' && !t.archived_month).length
+  // Finished tasks file themselves under the month they were done
+  const months = useMemo(() => pastMonths(teamTasks), [teamTasks])
+  const rows = teamTasks.filter(t => (view === CURRENT ? isCurrent(t) : t.status === 'done' && doneMonth(t) === view))
   const unalignedCount = rows.filter(t => !isLinked(t) && t.status !== 'done').length
-
-  async function archive() {
-    const n = await board.archiveCompleted()
-    setArchiveMsg(n ? `Archived ${n} completed task${n > 1 ? 's' : ''}.` : 'Nothing to archive.')
-  }
 
   const canEditTask = (t: TeamTask) => t.created_by === me.id || canEdit(t.assigned_to)
 
@@ -111,7 +104,7 @@ function TeamTasks() {
     <>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <p className="flex-1 min-w-[220px] text-sm text-gray-500">
-          Joint and meeting-assigned tasks, each tied to a KPI or rock. Task-by-task detail stays in Monday.
+          Joint and meeting-assigned tasks. Link each one to the KPI or rock it moves forward when you can.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -173,6 +166,7 @@ function TeamTasks() {
                 key={t.id}
                 task={t}
                 kpis={kpis}
+                allKpis={allKpis}
                 rocks={rocks}
                 goal={goalOf(t)}
                 editable={canEditTask(t) && view === CURRENT}
@@ -193,16 +187,8 @@ function TeamTasks() {
             </span>
           )}
           <span className="ml-auto">
-            Monthly memory: completed tasks move to that month's archive.
+            Completed tasks move to that month's archive when the month ends.
           </span>
-          <button
-            onClick={archive}
-            disabled={doneCount === 0}
-            className="flex items-center gap-1.5 font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1.5 disabled:opacity-40"
-          >
-            <Archive size={13} /> Archive {doneCount} completed
-          </button>
-          {archiveMsg && <span className="text-gray-400">{archiveMsg}</span>}
         </div>
       )}
     </>
@@ -323,9 +309,10 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
 
 // ---------- existing row ----------
 
-function TaskRow({ task, kpis, rocks, goal, editable, profiles, onUpdate, onDelete }: {
+function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdate, onDelete }: {
   task: TeamTask
   kpis: Kpi[]
+  allKpis: Kpi[]
   rocks: Rock[]
   goal?: string
   editable: boolean
@@ -339,7 +326,7 @@ function TaskRow({ task, kpis, rocks, goal, editable, profiles, onUpdate, onDele
   const creator = byId(task.created_by)
   const done = task.status === 'done'
   const linked = isLinked(task)
-  const kpi = kpis.find(k => k.id === task.kpi_id)
+  const kpi = allKpis.find(k => k.id === task.kpi_id)
   const rock = rocks.find(r => r.id === task.rock_id)
   const overdue = !done && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
 

@@ -9,7 +9,7 @@ import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
 import { PersonSettings } from '../components/dashboard/PersonSettings'
 import { MondayButton } from '../components/dashboard/MondayConnect'
 import { DeptTag } from '../components/ui/DeptTag'
-import { useKpis } from '../hooks/useKpis'
+import { useKpis, currentPeriod } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
 import type { useNotifications } from '../hooks/useNotifications'
 import { useTeam, displayName, managerOf } from '../lib/team'
@@ -82,7 +82,7 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
       <TopTasks board={board} personId={person.id} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
-        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} />
+        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} period={currentPeriod()} />
         <IndividualGoals personId={person.id} editable={editable} />
       </div>
 

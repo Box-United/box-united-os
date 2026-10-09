@@ -10,6 +10,7 @@ import { Scorecard } from './pages/Scorecard'
 import { EowStatus } from './pages/EowStatus'
 import { PerformanceReviews } from './pages/PerformanceReviews'
 import { supabase } from './lib/supabase'
+import { rollForward } from './lib/rollForward'
 import { TeamContext, makeCanEdit, makeCanReview, type TeamContextValue } from './lib/team'
 import { makeRelevant } from './lib/departments'
 import type { Profile } from './types/database'
@@ -37,12 +38,20 @@ export default function App() {
   const [allProfiles, setAllProfiles] = useState<Profile[]>([])
   const [navOpen, setNavOpen] = useState(false)
   const notifications = useNotifications(user?.id ?? '')
+  // Pages wait (briefly) for last quarter's KPIs and due recurring tasks to be made
+  const [rolled, setRolled] = useState(false)
 
   const effectiveViewingUserId = viewingUserId ?? user?.id ?? ''
 
   useEffect(() => {
     if (!user) return
     fetchProfiles().then(({ data }) => setAllProfiles(data ?? []))
+    const done = () => setRolled(true)
+    const timer = window.setTimeout(done, 4000)
+    rollForward().finally(() => {
+      window.clearTimeout(timer)
+      done()
+    })
   }, [user?.id])
 
   useEffect(() => {
@@ -69,7 +78,7 @@ export default function App() {
     }
   }, [profile, allProfiles])
 
-  if (loading) {
+  if (loading || (user && !rolled)) {
     return (
       <div className="w-full min-h-screen flex items-center justify-center" style={{ background: '#EEF2F7' }}>
         <div className="w-5 h-5 border-2 border-gray-200 border-t-blue-600 rounded-full animate-spin" />

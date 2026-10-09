@@ -5,11 +5,10 @@ import type { Profile, RockStatus } from '../../types/database'
 import { useTeam, displayName } from '../../lib/team'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { SupportsPicker } from '../ui/SupportsPicker'
 import { useSupportOptions } from '../../hooks/useGoalLinks'
 import { parentValue } from '../../lib/goalLinks'
-
-const ROCK_OPTIONS: RockStatus[] = ['on-track', 'off-track', 'done']
 
 interface Props {
   person: Profile
@@ -53,7 +52,7 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
         {mine.map(r => (
           <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gray-100 px-3 py-2 group">
             <span className="flex-1 min-w-[120px] text-sm text-gray-800 leading-snug">{r.title}</span>
-            <StatusPill status={r.status} small options={editable ? ROCK_OPTIONS : undefined}
+            <StatusPill status={r.status} small options={editable ? PROGRESS_OPTIONS : undefined}
               onChange={editable ? s => rocks.updateRockStatus(r.id, s as RockStatus) : undefined} />
             {editable && (
               <button onClick={() => rocks.deleteRock(r.id)} aria-label="Delete rock" className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400">

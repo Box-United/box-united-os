@@ -1,7 +1,9 @@
-export type RockStatus = 'on-track' | 'off-track' | 'done'
+// Goals, rocks and KPIs share one status list (migration 016)
+export type ProgressStatus = 'not-started' | 'on-track' | 'off-track' | 'done'
+export type RockStatus = ProgressStatus
+export type GoalStatus = ProgressStatus
+export type KpiStatus = ProgressStatus
 export type TeamTaskStatus = 'todo' | 'in-progress' | 'done'
-export type GoalStatus = 'not-started' | 'in-progress' | 'on-track' | 'done'
-export type KpiStatus = 'not-started' | 'in-progress' | 'on-track' | 'off-track' | 'done'
 export type Department = 'program' | 'development' | 'operations' | 'marketing' | 'finance' | 'accounting'
 
 export interface Profile {
@@ -41,7 +43,8 @@ export interface TeamTask {
   rock_id: string | null
   goal_id?: string | null       // a personal annual goal (migration 013)
   team_goal_id?: string | null  // a team annual goal (migration 013)
-  on_team_board?: boolean       // false for Monday tasks that are only linked, not Team
+  on_team_board?: boolean       // false for tasks that are only on the owner's dashboard
+  recurring_id?: string | null  // the repeating schedule that made it (migration 016)
   assigned_in_meeting: boolean
   source: 'manual' | 'monday'
   monday_item_id: string | null
@@ -122,8 +125,35 @@ export interface Kpi {
   team_goal_id?: string | null  // what it supports: a goal or a rock (migration 014)
   goal_id?: string | null
   rock_id?: string | null
+  year: number                  // the year it counts toward (migration 016)
+  quarter: number | null        // 1–4 for a quarterly KPI; empty = annual
+  copied_from?: string | null   // last period's KPI it was copied from
   updated_by: string | null
   updated_at: string
+  created_at: string
+}
+
+// A repeating schedule that makes its own tasks (migration 016)
+export interface RecurringTask {
+  id: string
+  title: string
+  description: string | null
+  assigned_to: string
+  created_by: string
+  kpi_id: string | null
+  rock_id: string | null
+  goal_id: string | null
+  team_goal_id: string | null
+  on_team_board: boolean
+  frequency: 'weekly' | 'monthly'
+  every_weeks: number
+  weekdays: number[]            // 1 = Monday … 7 = Sunday
+  month_week: number | null     // monthly: 1–4, or -1 for the last one
+  starts_on: string
+  ends_on: string | null
+  max_count: number | null
+  made_count: number
+  last_date: string | null
   created_at: string
 }
 

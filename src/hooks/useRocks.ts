@@ -29,7 +29,7 @@ export function useRocks(quarter: string, userId?: string) {
     const { data, error } = await supabase
       .from('rocks')
       // links only sent when chosen, so rocks still save before migration 014
-      .insert({ user_id: ownerId, title, status: 'on-track', quarter, ...(parent ? parentPatch(parent, false) : {}) })
+      .insert({ user_id: ownerId, title, status: 'not-started', quarter, ...(parent ? parentPatch(parent, false) : {}) })
       .select('*')
       .single()
     if (error) setError(error.message.includes('Maximum 3') ? 'The database still limits rocks to 3 a quarter. Run migration 012 to lift it.' : error.message)

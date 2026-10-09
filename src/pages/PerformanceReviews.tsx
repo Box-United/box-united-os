@@ -3,7 +3,7 @@ import { CheckCircle2, EyeOff, FileText, Lock, Send } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { usePerformanceReview, useReviewHistory, useReviewStatuses, reviewStatus } from '../hooks/usePerformanceReview'
 import { useIndividualGoals } from '../hooks/useIndividualGoals'
-import { useKpis } from '../hooks/useKpis'
+import { useKpis, kpiPeriodLabel } from '../hooks/useKpis'
 import type { Profile, ReviewItem, ReviewPeriod, Rock } from '../types/database'
 import { useTeam, displayName, firstName, shortDate } from '../lib/team'
 import { PageShell, PageHeader, SectionLabel } from '../components/layout/PageShell'
@@ -330,9 +330,10 @@ function ReviewEditor({ person, year, period, reviewerId, isEmployee, isReviewer
 // Goals / KPIs / rocks for the period, live from the dashboard and Scorecard
 function useReviewItems(personId: string, year: number, period: ReviewPeriod): ReviewItem[] {
   const { goals } = useIndividualGoals(personId, year)
-  const { kpis } = useKpis(personId)
-  const [rocks, setRocks] = useState<Rock[]>([])
   const quarters = PERIODS.find(p => p.id === period)!.quarters
+  const all = useKpis(personId, null).kpis
+  const kpis = useMemo(() => all.filter(k => k.year === year && (k.quarter == null || quarters.includes(k.quarter))), [all, year, quarters])
+  const [rocks, setRocks] = useState<Rock[]>([])
 
   useEffect(() => {
     supabase.from('rocks').select('*').eq('user_id', personId)
@@ -345,7 +346,8 @@ function useReviewItems(personId: string, year: number, period: ReviewPeriod): R
     ...goals.map(g => ({ key: `goal:${g.id}`, kind: 'goal' as const, title: g.title, status: g.status })),
     ...kpis.map(k => ({
       key: `kpi:${k.id}`, kind: 'kpi' as const, title: k.title, status: k.status,
-      detail: k.target != null ? `${(k.current ?? 0).toLocaleString()} / ${k.target.toLocaleString()}` : undefined,
+      detail: [k.quarter ? kpiPeriodLabel(k) : null, k.target != null ? `${(k.current ?? 0).toLocaleString()} / ${k.target.toLocaleString()}` : null]
+        .filter(Boolean).join(' · ') || undefined,
     })),
     ...rocks.map(r => ({ key: `rock:${r.id}`, kind: 'rock' as const, title: r.title, status: r.status, detail: r.quarter })),
   ], [goals, kpis, rocks])
