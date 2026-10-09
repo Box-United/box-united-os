@@ -82,14 +82,29 @@ export function initials(p: Pick<Profile, 'full_name' | 'email'> | undefined | n
   return (p.email[0] ?? '?').toUpperCase()
 }
 
+// What someone goes by: their preferred name ("Mary Kate"), else their first name
 export function firstName(p: Profile | undefined | null) {
   if (!p) return 'Unassigned'
-  return (p.full_name ?? p.email.split('@')[0]).split(' ')[0]
+  return p.preferred_name?.trim() || (p.full_name ?? p.email.split('@')[0]).split(' ')[0]
 }
 
 export function displayName(p: Profile | undefined | null) {
   if (!p) return 'Unassigned'
-  return p.full_name ?? p.email.split('@')[0]
+  const full = p.full_name ?? p.email.split('@')[0]
+  const preferred = p.preferred_name?.trim()
+  if (!preferred) return full
+  // "Mary Katherine Vanecko" who goes by Mary Kate → "Mary Kate Vanecko"
+  const parts = full.trim().split(/\s+/)
+  return parts.length > 1 ? `${preferred} ${parts[parts.length - 1]}` : preferred
+}
+
+// The executive director is a role; whoever holds it is named after it
+export function isExecutiveDirector(p: Profile | undefined | null) {
+  return p?.role === 'executive_director'
+}
+
+export function roleOrName(p: Profile | undefined | null) {
+  return isExecutiveDirector(p) ? `the Executive Director (${firstName(p)})` : displayName(p)
 }
 
 const PERSON_COLORS: Record<string, string> = {

@@ -28,8 +28,8 @@ export function EowStatus() {
   const viewers = me.role === 'executive_director'
     ? 'you'
     : me.manager_id && me.manager_id !== exec?.id
-      ? `you, ${displayName(byId(me.manager_id))} and ${exec ? displayName(exec) : 'the executive director'}`
-      : `you and ${exec ? displayName(exec) : 'the executive director'}`
+      ? `you, ${displayName(byId(me.manager_id))} and the Executive Director`
+      : 'you and the Executive Director'
   const seesOthers = submissions.some(s => s.user_id !== me.id) || profiles.some(p => canReview(p))
   const week = weekOf()
   const mine = submissions.find(s => s.user_id === me.id && s.week_of === week)

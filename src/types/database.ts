@@ -10,6 +10,7 @@ export interface Profile {
   id: string
   email: string
   full_name: string | null
+  preferred_name?: string | null  // what they go by, e.g. "Mary Kate" (migration 017)
   avatar_url: string | null
   role: string | null
   manager_id: string | null

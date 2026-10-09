@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useIndividualGoals } from '../../hooks/useIndividualGoals'
 import type { KpiStatus } from '../../types/database'
@@ -13,10 +13,12 @@ const THIS_YEAR = new Date().getFullYear()
 interface Props {
   personId: string
   editable: boolean
+  // Extra control for the section header (e.g. the dashboard's Less toggle)
+  extra?: ReactNode
 }
 
 // This person's own goals for the year. Team goals live on the Scorecard.
-export function IndividualGoals({ personId, editable }: Props) {
+export function IndividualGoals({ personId, editable, extra }: Props) {
   const [year, setYear] = useState(THIS_YEAR)
   const { goals, loading, error, clearError, addGoal, updateGoal, deleteGoal } = useIndividualGoals(personId, year)
   const children = useGoalChildren('personal', goals.map(g => g.id))
@@ -44,6 +46,7 @@ export function IndividualGoals({ personId, editable }: Props) {
                 <Plus size={13} /> Add goal
               </button>
             )}
+            {extra}
           </div>
         }
       >

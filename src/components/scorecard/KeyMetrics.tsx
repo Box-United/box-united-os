@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
 import { useGoalDataVersion } from '../../lib/linkEvents'
@@ -36,6 +36,8 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
   const [editingField, setEditingField] = useState<'actual' | 'target' | null>(null)
   const [editValue, setEditValue] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  // Starts as just the number and progress; "More" shows the trend, Moved by and history
+  const [expanded, setExpanded] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -164,7 +166,7 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
         </div>
 
         {/* last 3 values */}
-        {last3.length > 1 && (
+        {expanded && last3.length > 1 && (
           <div className="flex items-end gap-1 h-9" aria-label={`Last ${last3.length} values`}>
             {last3.map((h, i) => (
               <div key={h.id} title={`${config.format(h.actual!)} · ${shortDate(h.edited_at)}`}
@@ -177,50 +179,59 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
 
       <div className="mt-4"><ProgressBar pct={pct} tone={pct >= 100 ? 'green' : 'blue'} /></div>
 
-      <div className="mt-3 pt-2 border-t border-gray-100">
-        {movedBy.length === 0 ? (
-          <p className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={11} /> No team goals move this metric yet</p>
-        ) : (
-          <>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400 mb-1">Moved by</p>
-            <ul className="space-y-1">
-              {movedBy.map(m => (
-                <li key={m.goal.id} className="flex items-center gap-2 text-xs">
-                  <span className="flex-1 min-w-0 truncate text-gray-700">{m.goal.title}</span>
-                  <span className={`text-[11px] ${m.rocks + m.kpis ? 'text-gray-400' : 'text-amber-700'}`}>
-                    {m.rocks + m.kpis ? `${m.rocks} rock${m.rocks === 1 ? '' : 's'} · ${m.kpis} KPI${m.kpis === 1 ? '' : 's'}` : 'nothing under it'}
-                  </span>
-                  <StatusPill status={m.goal.status} small />
+      <button onClick={() => setExpanded(e => !e)} aria-expanded={expanded}
+        className="flex items-center gap-0.5 self-start mt-2.5 text-[11px] font-semibold text-gray-400 hover:text-blue-600">
+        {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {expanded ? 'Less' : 'More'}
+      </button>
+
+      {expanded && (
+        <>
+          <div className="mt-2 pt-2 border-t border-gray-100">
+            {movedBy.length === 0 ? (
+              <p className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={11} /> No team goals move this metric yet</p>
+            ) : (
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400 mb-1">Moved by</p>
+                <ul className="space-y-1">
+                  {movedBy.map(m => (
+                    <li key={m.goal.id} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 min-w-0 truncate text-gray-700">{m.goal.title}</span>
+                      <span className={`text-[11px] ${m.rocks + m.kpis ? 'text-gray-400' : 'text-amber-700'}`}>
+                        {m.rocks + m.kpis ? `${m.rocks} rock${m.rocks === 1 ? '' : 's'} · ${m.kpis} KPI${m.kpis === 1 ? '' : 's'}` : 'nothing under it'}
+                      </span>
+                      <StatusPill status={m.goal.status} small />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between mt-2 text-[11px] text-gray-400">
+            <span>
+              {metric?.updated_by
+                ? `Updated by ${firstName(byId(metric.updated_by))} · ${shortDate(metric.updated_at)}`
+                : 'Not updated yet'}
+            </span>
+            {actuals.length > 0 && (
+              <button onClick={() => setShowHistory(v => !v)} className="font-semibold text-blue-600 hover:underline">
+                {showHistory ? 'Hide history' : 'History'}
+              </button>
+            )}
+          </div>
+
+          {showHistory && (
+            <ul className="mt-3 border-t border-gray-100 pt-2 space-y-1 max-h-40 overflow-y-auto">
+              {[...history].reverse().map(h => (
+                <li key={h.id} className="flex text-xs text-gray-600 gap-2">
+                  <span className="tabular-nums font-semibold">{h.actual != null ? config.format(h.actual) : '—'}</span>
+                  <span className="text-gray-400">/ {h.target != null ? config.format(h.target) : '—'}</span>
+                  <span className="ml-auto text-gray-400">{firstName(byId(h.edited_by))} · {shortDate(h.edited_at)}</span>
                 </li>
               ))}
             </ul>
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between mt-2 text-[11px] text-gray-400">
-        <span>
-          {metric?.updated_by
-            ? `Updated by ${firstName(byId(metric.updated_by))} · ${shortDate(metric.updated_at)}`
-            : 'Not updated yet'}
-        </span>
-        {actuals.length > 0 && (
-          <button onClick={() => setShowHistory(v => !v)} className="font-semibold text-blue-600 hover:underline">
-            {showHistory ? 'Hide history' : 'History'}
-          </button>
-        )}
-      </div>
-
-      {showHistory && (
-        <ul className="mt-3 border-t border-gray-100 pt-2 space-y-1 max-h-40 overflow-y-auto">
-          {[...history].reverse().map(h => (
-            <li key={h.id} className="flex text-xs text-gray-600 gap-2">
-              <span className="tabular-nums font-semibold">{h.actual != null ? config.format(h.actual) : '—'}</span>
-              <span className="text-gray-400">/ {h.target != null ? config.format(h.target) : '—'}</span>
-              <span className="ml-auto text-gray-400">{firstName(byId(h.edited_by))} · {shortDate(h.edited_at)}</span>
-            </li>
-          ))}
-        </ul>
+          )}
+        </>
       )}
     </div>
   )

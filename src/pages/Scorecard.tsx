@@ -3,7 +3,7 @@ import { Target } from 'lucide-react'
 import { useRocks } from '../hooks/useRocks'
 import { useKpis } from '../hooks/useKpis'
 import { useTeamTasks } from '../hooks/useTeamTasks'
-import { useTeam, currentQuarter, quarterLabel, displayName } from '../lib/team'
+import { useTeam, currentQuarter, quarterLabel } from '../lib/team'
 import { departmentsOf, deptInfo } from '../lib/departments'
 import { PageShell, SectionLabel } from '../components/layout/PageShell'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
@@ -67,7 +67,7 @@ export function Scorecard() {
           empty={
             <>
               {myDepts.length === 0
-                ? `You don't have a department yet, so no key metrics show here. ${exec && exec.id !== me.id ? `Ask ${displayName(exec)} to set yours.` : ''}`
+                ? `You don't have a department yet, so no key metrics show here. ${exec && exec.id !== me.id ? 'Ask the Executive Director to set yours.' : ''}`
                 : `None of the key metrics are tagged ${deptNames}.`}{' '}
               All key metrics are on the {toTeamBoard}.
             </>

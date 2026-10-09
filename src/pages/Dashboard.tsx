@@ -5,7 +5,8 @@ import { Avatar } from '../components/ui/Avatar'
 import { NotificationBell } from '../components/dashboard/NotificationBell'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
 import { IndividualGoals } from '../components/dashboard/IndividualGoals'
-import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
+import { MyTasksTable } from '../components/dashboard/MyTasks'
+import { DetailsToggle, GoalsSummary, KpisSummary, RocksSummary } from '../components/dashboard/DashboardSummary'
 import { PersonSettings } from '../components/dashboard/PersonSettings'
 import { MondayButton } from '../components/dashboard/MondayConnect'
 import { KeyMetrics } from '../components/scorecard/KeyMetrics'
@@ -15,7 +16,7 @@ import { useKpis, currentPeriod } from '../hooks/useKpis'
 import { useRocks } from '../hooks/useRocks'
 import { useTeamTasks } from '../hooks/useTeamTasks'
 import type { useNotifications } from '../hooks/useNotifications'
-import { useTeam, displayName, firstName, managerOf, currentQuarter, quarterLabel } from '../lib/team'
+import { useTeam, displayName, firstName, managerOf, currentQuarter, quarterLabel, roleOrName } from '../lib/team'
 import { departmentsOf, deptInfo, makeRelevant } from '../lib/departments'
 
 interface Props {
@@ -43,6 +44,12 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
   const relevant = makeRelevant(person, profiles)
   const deptNames = departmentsOf(person, profiles).map(d => deptInfo(d)!.label).join(' · ')
   const whose = isOwn ? 'your' : `${firstName(person)}'s`
+
+  // Goals, rocks and KPIs start as one line each; Details opens the full, editable section
+  type Section = 'goals' | 'rocks' | 'kpis'
+  const [details, setDetails] = useState<Record<Section, boolean>>({ goals: false, rocks: false, kpis: false })
+  const toggle = (s: Section) => <DetailsToggle open={details[s]} onClick={() => setDetails(d => ({ ...d, [s]: !d[s] }))} />
+  const rocksTitle = `${isOwn ? 'My rocks' : 'Rocks'} · ${quarter}`
   // Only the executive director sets reporting lines and departments
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const canSetup = me.role === 'executive_director'
@@ -69,7 +76,7 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
           </h1>
           <p className="text-sm text-gray-400">
             {person.title || (person.role && ROLE_LABELS[person.role]) || 'Team member'}
-            {manager && <> · reports to {displayName(manager)}</>}
+            {manager && <> · reports to {roleOrName(manager)}</>}
             {canSetup && settingsFor !== person.id && (
               <button onClick={() => setSettingsFor(person.id)} className="ml-2 text-xs font-semibold text-blue-600 hover:underline">
                 {person.role === 'executive_director' ? 'Edit' : 'Change'}
@@ -104,18 +111,25 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
           }
         />
 
-        <IndividualGoals personId={person.id} editable={editable} />
+        {details.goals
+          ? <IndividualGoals personId={person.id} editable={editable} extra={toggle('goals')} />
+          : <GoalsSummary personId={person.id} year={cq.year} right={toggle('goals')} />}
 
-        <section>
-          <SectionLabel>{isOwn ? 'My rocks' : 'Rocks'} · {quarter}</SectionLabel>
-          {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
-          <RockCard person={person} rocks={rocks} quarter={quarter} showName={false} />
-        </section>
+        {details.rocks ? (
+          <section>
+            <SectionLabel right={toggle('rocks')}>{rocksTitle}</SectionLabel>
+            {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+            <RockCard person={person} rocks={rocks} quarter={quarter} showName={false} />
+          </section>
+        ) : (
+          <RocksSummary rocks={rocks.rocks} loading={rocks.loading} title={rocksTitle} right={toggle('rocks')} />
+        )}
 
-        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} period={currentPeriod()} />
+        {details.kpis
+          ? <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} period={currentPeriod()} extra={toggle('kpis')} />
+          : <KpisSummary kpis={kpis.kpis} loading={kpis.loading} title={`KPIs · ${quarter}`} right={toggle('kpis')} />}
       </div>
 
-      <TopTasks board={board} personId={person.id} />
       <MyTasksTable board={board} personId={person.id} />
     </PageShell>
   )

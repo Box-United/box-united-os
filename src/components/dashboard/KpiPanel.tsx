@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Copy, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { currentPeriod, kpiPeriodLabel, type KpiPeriod, type useKpis } from '../../hooks/useKpis'
 import type { Department, Kpi, KpiArea, KpiStatus, TeamTask } from '../../types/database'
@@ -20,6 +20,8 @@ interface Props {
   fallbackMondayUrl: string | null
   // The quarter being looked at; its year's annual KPIs show too
   period: KpiPeriod
+  // Extra control for the section header (e.g. the dashboard's Less toggle)
+  extra?: ReactNode
 }
 
 const TONE: Record<KpiStatus, 'blue' | 'green' | 'amber' | 'red'> = {
@@ -49,7 +51,7 @@ function nearestQuarterSet(all: Kpi[], p: KpiPeriod) {
   return best == null ? null : byQuarter.get(best)!
 }
 
-export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUrl, period }: Props) {
+export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUrl, period, extra }: Props) {
   const { areas, kpis, allKpis, loading, error, addArea, updateArea, addKpi, copyKpis, deleteArea } = kpiState
   const [adding, setAdding] = useState(false)
   const [kpiTitle, setKpiTitle] = useState('')
@@ -118,10 +120,15 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   return (
     <section className="card p-5 self-start">
       <SectionLabel
-        right={editable && (
-          <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
-            <Plus size={13} /> Add program area
-          </button>
+        right={(editable || extra) && (
+          <div className="flex items-center gap-3">
+            {editable && (
+              <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                <Plus size={13} /> Add program area
+              </button>
+            )}
+            {extra}
+          </div>
         )}
       >
         Individual KPIs · {quarterLabel(period.q, period.year)}

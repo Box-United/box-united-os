@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { CalendarClock, ChevronDown, ChevronRight, Plus, Repeat, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Repeat, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { useTeamTasks } from '../../hooks/useTeamTasks'
 import { useRocks } from '../../hooks/useRocks'
@@ -130,43 +130,6 @@ function myTasks(board: Board, personId: string) {
   const open = assigned.filter(t => t.status !== 'done').sort(byDue)
   const done = assigned.filter(t => t.status === 'done')
   return { open, done }
-}
-
-export function TopTasks({ board, personId }: { board: Board; personId: string }) {
-  const { me } = useTeam()
-  const { open } = myTasks(board, personId)
-  const top = open.slice(0, 3)
-  const linkOf = useLinkTitles(top)
-  const isOwn = personId === me.id
-
-  return (
-    <section className="mb-5">
-      <SectionLabel right={open.length > 3 && <span className="text-[11px] text-gray-400">{open.length - 3} more below</span>}>
-        Top 3 up next
-      </SectionLabel>
-      {board.loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[1, 2, 3].map(i => <div key={i} className="card h-24 animate-pulse" />)}</div>
-      ) : top.length === 0 ? (
-        <div className="card p-5 text-sm text-gray-400">
-          Nothing open. {isOwn ? 'Your' : 'Their'} tasks show up here, soonest due first.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {top.map((t, i) => (
-            <div key={t.id} className="card p-4 flex flex-col gap-2 min-w-0">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ background: '#2563EB' }}>{i + 1}</span>
-                <CalendarClock size={12} className="text-gray-400" />
-                <DueLabel task={t} />
-              </div>
-              <p className="text-sm font-semibold text-gray-900 leading-snug">{t.title}</p>
-              <div className="mt-auto"><Advances link={linkOf(t)} /></div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  )
 }
 
 export function MyTasksTable({ board, personId }: { board: Board; personId: string }) {

@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Department, Profile } from '../../types/database'
-import { useTeam, displayName, managerOf, reportsUnder } from '../../lib/team'
+import { useTeam, displayName, firstName, managerOf, reportsUnder, isExecutiveDirector } from '../../lib/team'
 import { DEPARTMENTS } from '../../lib/departments'
 
-// The executive director sets who someone reports to, their departments and title.
+// The executive director sets who someone reports to, their departments, title and
+// the name they go by. Reporting to the executive director is stored as "no
+// manager", so it follows the role rather than whoever holds it.
 // Reporting lines decide who can see someone's check-ins and reviews; departments
 // decide which metrics and team goals show on their Scorecard.
 export function PersonSettings({ person, onDone }: { person: Profile; onDone: () => void }) {
   const { profiles, reloadProfiles } = useTeam()
   const isExecPerson = person.role === 'executive_director'
   const [title, setTitle] = useState(person.title ?? '')
+  const [goesBy, setGoesBy] = useState(person.preferred_name ?? '')
   const [managerId, setManagerId] = useState(managerOf(person, profiles) ?? '')
   const [departments, setDepartments] = useState<Department[]>(person.departments ?? [])
   const [saving, setSaving] = useState(false)
@@ -31,12 +34,14 @@ export function PersonSettings({ person, onDone }: { person: Profile; onDone: ()
       title: title.trim() || null,
       departments: DEPARTMENTS.map(d => d.id).filter(d => departments.includes(d)),
     }
-    if (!isExecPerson) patch.manager_id = managerId || null
+    // only sent when set, so other settings still save before migration 017
+    if (goesBy.trim() || person.preferred_name) patch.preferred_name = goesBy.trim() || null
+    if (!isExecPerson) patch.manager_id = isExecutiveDirector(profiles.find(p => p.id === managerId)) ? null : managerId || null
     const { data, error } = await supabase.from('profiles').update(patch).eq('id', person.id).select('id')
     setSaving(false)
     if (error || !data?.length) {
       setError(error?.message.includes('column') || error?.message.includes('constraint')
-        ? "Couldn't save: the database needs the latest updates (migrations 008 and 009)."
+        ? "Couldn't save: the database needs the latest updates (migrations 008, 009 and 017)."
         : "Couldn't save. Only the executive director can change reporting lines and departments.")
       return
     }
@@ -52,10 +57,15 @@ export function PersonSettings({ person, onDone }: { person: Profile; onDone: ()
             <span className="block text-xs font-semibold text-gray-700 mb-1">Reports to</span>
             <select value={managerId} onChange={e => setManagerId(e.target.value)}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
-              {options.map(p => <option key={p.id} value={p.id}>{displayName(p)}</option>)}
+              {options.map(p => <option key={p.id} value={p.id}>{isExecutiveDirector(p) ? `Executive Director (${firstName(p)})` : displayName(p)}</option>)}
             </select>
           </label>
         )}
+        <label className="block">
+          <span className="block text-xs font-semibold text-gray-700 mb-1">Goes by <span className="font-normal text-gray-400">(optional)</span></span>
+          <input value={goesBy} onChange={e => setGoesBy(e.target.value)} placeholder={`e.g. ${(person.full_name ?? '').split(' ')[0] || 'first name'}`}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400" />
+        </label>
         <label className="block">
           <span className="block text-xs font-semibold text-gray-700 mb-1">Title</span>
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Program Coordinator"
