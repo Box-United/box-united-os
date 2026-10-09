@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Eye, Pencil } from 'lucide-react'
-import { PageShell } from '../components/layout/PageShell'
+import { PageShell, SectionLabel } from '../components/layout/PageShell'
 import { Avatar } from '../components/ui/Avatar'
 import { NotificationBell } from '../components/dashboard/NotificationBell'
 import { KpiPanel } from '../components/dashboard/KpiPanel'
@@ -8,11 +8,15 @@ import { IndividualGoals } from '../components/dashboard/IndividualGoals'
 import { TopTasks, MyTasksTable } from '../components/dashboard/MyTasks'
 import { PersonSettings } from '../components/dashboard/PersonSettings'
 import { MondayButton } from '../components/dashboard/MondayConnect'
+import { KeyMetrics } from '../components/scorecard/KeyMetrics'
+import { RockCard } from '../components/scorecard/RockCard'
 import { DeptTag } from '../components/ui/DeptTag'
 import { useKpis, currentPeriod } from '../hooks/useKpis'
+import { useRocks } from '../hooks/useRocks'
 import { useTeamTasks } from '../hooks/useTeamTasks'
 import type { useNotifications } from '../hooks/useNotifications'
-import { useTeam, displayName, managerOf } from '../lib/team'
+import { useTeam, displayName, firstName, managerOf, currentQuarter, quarterLabel } from '../lib/team'
+import { departmentsOf, deptInfo, makeRelevant } from '../lib/departments'
 
 interface Props {
   viewingUserId: string
@@ -32,6 +36,13 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
 
   const kpis = useKpis(person.id)
   const board = useTeamTasks()
+  const cq = currentQuarter()
+  const quarter = quarterLabel(cq.q, cq.year)
+  const rocks = useRocks(quarter, person.id)
+  // Key metrics for this person's departments (and those of anyone who reports to them)
+  const relevant = makeRelevant(person, profiles)
+  const deptNames = departmentsOf(person, profiles).map(d => deptInfo(d)!.label).join(' · ')
+  const whose = isOwn ? 'your' : `${firstName(person)}'s`
   // Only the executive director sets reporting lines and departments
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const canSetup = me.role === 'executive_director'
@@ -79,13 +90,32 @@ export function Dashboard({ viewingUserId, notifications }: Props) {
         <PersonSettings key={person.id} person={person} onDone={() => setSettingsFor(null)} />
       )}
 
-      <TopTasks board={board} personId={person.id} />
+      {/* Big picture first: metrics, goals, rocks, KPIs, then tasks */}
+      <div className="space-y-8 mb-8">
+        <KeyMetrics
+          year={cq.year}
+          filter={m => relevant(m.department)}
+          title={`Key metrics for ${whose} departments · ${cq.year}`}
+          empty={
+            <>
+              {deptNames ? `None of the key metrics are tagged ${deptNames}.` : `${isOwn ? "You don't" : `${firstName(person)} doesn't`} have a department yet, so no key metrics show here.`}{' '}
+              All key metrics are on the <a href="#/team-board" className="font-semibold text-blue-600 hover:underline">Team Board</a>.
+            </>
+          }
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
-        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} period={currentPeriod()} />
         <IndividualGoals personId={person.id} editable={editable} />
+
+        <section>
+          <SectionLabel>{isOwn ? 'My rocks' : 'Rocks'} · {quarter}</SectionLabel>
+          {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+          <RockCard person={person} rocks={rocks} quarter={quarter} showName={false} />
+        </section>
+
+        <KpiPanel kpiState={kpis} tasks={board.tasks} editable={editable} personId={person.id} fallbackMondayUrl={null} period={currentPeriod()} />
       </div>
 
+      <TopTasks board={board} personId={person.id} />
       <MyTasksTable board={board} personId={person.id} />
     </PageShell>
   )
