@@ -21,7 +21,9 @@ cp .env.example .env
 # 3. Apply database schema
 # Run each file in supabase/migrations/ in order (001 → 016) in the Supabase
 # SQL editor. When a new migration lands, run just that file.
-# Project: kfdyvfxkguhcydbjyjgt
+# Project: vjrbavvfjghxwbwozddl (the one the live site uses)
+# When supabase/functions/monday-sync/index.ts changes, paste it into
+# Edge Functions → monday-sync in the same project.
 
 # 4. Enable Google OAuth in Supabase
 # Auth → Providers → Google → enable, paste Client ID + Secret
@@ -55,5 +57,5 @@ Matches the Lovable cockpit:
 
 | Variable | Description |
 |---|---|
-| `VITE_SUPABASE_URL` | `https://kfdyvfxkguhcydbjyjgt.supabase.co` |
+| `VITE_SUPABASE_URL` | `https://vjrbavvfjghxwbwozddl.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Found in Supabase → Settings → API |
