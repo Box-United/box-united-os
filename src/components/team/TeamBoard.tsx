@@ -24,24 +24,25 @@ function parseLink(v: string) {
   return { kpi_id: v.startsWith('kpi:') ? v.slice(4) : null, rock_id: v.startsWith('rock:') ? v.slice(5) : null }
 }
 
+// Big picture first, then smaller: metrics and goals, rocks, KPIs, tasks
 const TABS = [
-  { id: 'tasks', label: 'Tasks' },
+  { id: 'goals', label: 'Metrics & goals' },
   { id: 'rocks', label: 'Rocks' },
   { id: 'kpis', label: 'KPIs' },
-  { id: 'goals', label: 'Metrics & goals' },
+  { id: 'tasks', label: 'Tasks' },
 ] as const
 type Tab = typeof TABS[number]['id']
 
-// Everything the whole team shares: tasks, everyone's rocks and KPIs, all key metrics and team goals
+// Everything the whole team shares: all key metrics and team goals, everyone's rocks, KPIs and tasks
 export function TeamBoard() {
-  const [tab, setTab] = useState<Tab>('tasks')
+  const [tab, setTab] = useState<Tab>(TABS[0].id)
 
   return (
     <PageShell>
       <PageHeader
         icon={<Users size={18} className="text-blue-600" />}
         title="Team Board"
-        subtitle="Everyone's tasks, rocks and KPIs, plus all key metrics and team goals."
+        subtitle="All key metrics and team goals, then everyone's rocks, KPIs and tasks."
       />
       <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100 w-fit max-w-full overflow-x-auto mb-5" role="tablist" aria-label="Team Board sections">
         {TABS.map(t => (

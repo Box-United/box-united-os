@@ -46,7 +46,7 @@ export function Scorecard() {
             <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Archivo, sans-serif' }}>My Scorecard</h1>
           </div>
           <p className="text-sm text-gray-400 ml-7">
-            Your KPIs and rocks, plus the metrics and team goals for {isExec ? 'every department' : deptNames || 'your departments'}
+            Key metrics and team goals for {isExec ? 'every department' : deptNames || 'your departments'}, then your rocks and KPIs
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -74,15 +74,7 @@ export function Scorecard() {
           }
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5">
-          <KpiPanel kpiState={kpis} tasks={tasks} editable personId={me.id} fallbackMondayUrl={null} period={{ year, q }} />
-          <section className="self-start">
-            <SectionLabel>My rocks · {quarter}</SectionLabel>
-            {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
-            <RockCard person={me} rocks={rocks} quarter={quarter} showName={false} />
-          </section>
-        </div>
-
+        {/* Big picture first: metrics, then goals, rocks and KPIs */}
         <TeamGoals
           year={year}
           filter={g => relevant(g.department) || g.owner_id === me.id}
@@ -93,6 +85,14 @@ export function Scorecard() {
             </p>
           }
         />
+
+        <section>
+          <SectionLabel>My rocks · {quarter}</SectionLabel>
+          {rocks.error && <p role="alert" className="text-xs text-red-600 mb-2">{rocks.error}</p>}
+          <RockCard person={me} rocks={rocks} quarter={quarter} showName={false} />
+        </section>
+
+        <KpiPanel kpiState={kpis} tasks={tasks} editable personId={me.id} fallbackMondayUrl={null} period={{ year, q }} />
       </div>
     </PageShell>
   )

@@ -285,6 +285,9 @@ async function syncOsItems(db: SupabaseClient) {
     db.from('annual_goals').select('id, owner_id, title, status, year').gte('year', year),
     db.from('monday_items').select('*'),
   ])
+  // A failed read would look like "everything was deleted" and empty the shared board
+  const failed = [profiles, rocks, kpis, areas, goals, teamGoals, mapped].find(r => r.error)
+  if (failed) throw new Error(`Couldn't read the OS (${failed.error!.message}). Has the latest migration been run?`)
 
   const people = new Map((profiles.data ?? []).map(p => [p.id, p]))
   const first = (id: string | null) => {
