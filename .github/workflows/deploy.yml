@@ -3,6 +3,11 @@ name: Deploy Box United OS
 on:
   push:
     branches: [main]
+    # Migrations, edge functions and notes don't change the site, so they can
+    # land on main without redeploying it
+    paths-ignore:
+      - 'supabase/**'
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
