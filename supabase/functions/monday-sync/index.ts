@@ -116,8 +116,8 @@ async function handleAction(req: Request) {
       }
 
       case 'create_from_template': {
-        const { data: profile } = await db.from('profiles').select('full_name, email').eq('id', user.id).single()
-        const first = (profile?.full_name ?? profile?.email ?? 'Team member').split(/[\s@]/)[0]
+        const { data: profile } = await db.from('profiles').select('*').eq('id', user.id).single()
+        const first = profile?.preferred_name || (profile?.full_name ?? profile?.email ?? 'Team member').split(/[\s@]/)[0]
         const dup = await monday<{ duplicate_board: { board: { id: string } } }>(
           `mutation ($id: ID!, $name: String!, $ws: ID!) {
             duplicate_board(board_id: $id, duplicate_type: duplicate_board_with_structure, board_name: $name, workspace_id: $ws) { board { id } }
@@ -277,7 +277,7 @@ function thisQuarter() {
 async function syncOsItems(db: SupabaseClient) {
   const { year, q } = thisQuarter()
   const [profiles, rocks, kpis, areas, goals, teamGoals, mapped] = await Promise.all([
-    db.from('profiles').select('id, full_name, email'),
+    db.from('profiles').select('*'),
     db.from('rocks').select('id, user_id, title, status, quarter'),
     db.from('kpis').select('id, user_id, area_id, title, status, year, quarter'),
     db.from('kpi_areas').select('id, name'),
@@ -292,7 +292,8 @@ async function syncOsItems(db: SupabaseClient) {
   const people = new Map((profiles.data ?? []).map(p => [p.id, p]))
   const first = (id: string | null) => {
     const p = id ? people.get(id) : null
-    return p ? (p.full_name ?? p.email).split(/[\s@]/)[0] : null
+    // What they go by ("Mary Kate"), else their first name
+    return p ? p.preferred_name || (p.full_name ?? p.email).split(/[\s@]/)[0] : null
   }
   const label = (who: string | null, title: string) => (who ? `${who} · ${title}` : title)
   const areaName = new Map((areas.data ?? []).map(a => [a.id, a.name]))
