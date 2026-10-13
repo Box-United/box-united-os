@@ -11,6 +11,7 @@ import { useTeam, currentQuarter, quarterLabel, firstName, monthKey, monthLabel,
 import { PageShell, PageHeader } from '../layout/PageShell'
 import { doneMonth, isCurrent, pastMonths } from '../../lib/tasks'
 import { Avatar } from '../ui/Avatar'
+import { AutoTextarea } from '../ui/AutoTextarea'
 
 const CURRENT = 'current'
 
@@ -375,11 +376,11 @@ function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdat
       </td>
       <td className="px-2 py-2.5">
         {editable ? (
-          <input value={notes} onChange={e => setNotes(e.target.value)}
+          <AutoTextarea id={`team-notes-${task.id}`} value={notes} onChange={setNotes} rows={1}
             onBlur={() => notes !== (task.description ?? '') && onUpdate({ description: notes.trim() || null })}
-            placeholder="—" className="w-full text-xs text-gray-600 bg-transparent outline-none focus:bg-white focus:border focus:border-gray-200 rounded px-1 py-0.5" />
+            placeholder="—" className="block text-xs text-gray-600 bg-transparent outline-none border border-transparent focus:bg-white focus:border-gray-200 rounded px-1 py-0.5 max-h-24 overflow-y-auto" />
         ) : (
-          <span className="text-xs text-gray-600">{task.description || '—'}</span>
+          <span className="text-xs text-gray-600 whitespace-pre-line">{task.description || '—'}</span>
         )}
       </td>
       <td className="px-2 py-2.5">

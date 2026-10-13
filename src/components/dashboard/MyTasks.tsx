@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Repeat, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Repeat, StickyNote, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { useTeamTasks } from '../../hooks/useTeamTasks'
 import { useRocks } from '../../hooks/useRocks'
@@ -10,6 +10,7 @@ import type { RecurringTask, TeamTask } from '../../types/database'
 import { useTeam, firstName, shortDate, currentQuarter, quarterLabel, monthKey, monthLabel } from '../../lib/team'
 import { describeSchedule, doneMonth, isoWeekday, MONTH_WEEKS, pastMonths, weekOfMonth, WEEKDAYS } from '../../lib/tasks'
 import { SectionLabel } from '../layout/PageShell'
+import { AutoTextarea } from '../ui/AutoTextarea'
 import { useGoalDataVersion } from '../../lib/linkEvents'
 
 type Board = ReturnType<typeof useTeamTasks>
@@ -220,20 +221,35 @@ function TaskTable({ board, rows, linkOf, loading, empty }: { board: Board; rows
 function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: Board; link: ReturnType<LinkOf>; rule?: RecurringTask }) {
   const { me, byId, canEdit } = useTeam()
   const [confirming, setConfirming] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const editable = t.created_by === me.id || canEdit(t.assigned_to)
   const isDone = t.status === 'done'
 
   return (
     <Fragment>
-      <tr className={`border-b border-gray-50 last:border-0 group ${isDone ? 'opacity-60' : ''}`}>
+      <tr className={`group ${notesOpen ? '' : 'border-b border-gray-50 last:border-0'} ${isDone ? 'opacity-60' : ''}`}>
         <td className="px-4 py-2.5">
           <input type="checkbox" checked={isDone} disabled={!editable}
             onChange={e => board.updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' })}
             aria-label={isDone ? 'Mark not done' : 'Mark done'} className="w-4 h-4 accent-blue-600" />
         </td>
         <td className="px-2 py-2.5">
-          <p className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`}>{t.title}</p>
-          {t.description && <p className="text-xs text-gray-400 truncate max-w-[420px]">{t.description}</p>}
+          <div className="flex items-baseline gap-2">
+            <p className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`}>{t.title}</p>
+            {editable && !t.description && !notesOpen && (
+              <button onClick={() => setNotesOpen(true)}
+                className="shrink-0 flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                <StickyNote size={10} /> Add notes
+              </button>
+            )}
+          </div>
+          {(t.description || notesOpen) && (
+            <button onClick={() => setNotesOpen(v => !v)} aria-expanded={notesOpen}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 max-w-[420px] text-left">
+              <StickyNote size={11} className="shrink-0" />
+              <span className="truncate">{notesOpen ? 'Hide notes' : t.description?.split('\n')[0]}</span>
+            </button>
+          )}
           {rule && (
             <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 mt-0.5">
               <Repeat size={10} /> {describeSchedule(rule)}
@@ -252,6 +268,14 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
           )}
         </td>
       </tr>
+      {notesOpen && (
+        <tr className="border-b border-gray-50 last:border-0">
+          <td />
+          <td colSpan={5} className="px-2 pb-3">
+            <TaskNotes task={t} board={board} editable={editable} />
+          </td>
+        </tr>
+      )}
       {confirming && (
         <tr className="bg-red-50/40 border-b border-red-100">
           <td colSpan={6} className="px-4 py-2">
@@ -276,6 +300,26 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
   )
 }
 
+// A task's notes: links, who to call, where it's up to. Saved when you click away.
+function TaskNotes({ task, board, editable }: { task: TeamTask; board: Board; editable: boolean }) {
+  const [notes, setNotes] = useState(task.description ?? '')
+
+  function save() {
+    const next = notes.trim()
+    if (next !== (task.description ?? '').trim()) void board.updateTask(task.id, { description: next || null })
+  }
+
+  if (!editable) return <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-w-[min(640px,calc(100vw-6rem))]">{task.description}</p>
+  return (
+    <div className="max-w-[min(640px,calc(100vw-6rem))]">
+      <AutoTextarea id={`notes-${task.id}`} value={notes} onChange={setNotes} onBlur={save} autoFocus={!task.description} rows={3}
+        placeholder="Notes: links, who to call, where it's up to…"
+        className="text-sm text-gray-800 leading-relaxed border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 bg-white" />
+      <p className="text-[11px] text-gray-400 mt-1">Saves when you click away.</p>
+    </div>
+  )
+}
+
 type RepeatKind = 'none' | 'weekly' | 'monthly'
 type Ends = 'never' | 'on' | 'after'
 
@@ -289,6 +333,7 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
   const { goals } = useIndividualGoals(personId, year)
   const teamGoals = useAnnualGoals(year, me.id).goals
   const [title, setTitle] = useState('')
+  const [notes, setNotes] = useState('')
   const [due, setDue] = useState('')
   const [link, setLink] = useState('')
   const [team, setTeam] = useState(false)
@@ -335,7 +380,7 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
     const saved = repeats
       ? await board.addRecurring({
         title: title.trim(),
-        description: null,
+        description: notes.trim() || null,
         assigned_to: personId,
         created_by: me.id,
         ...links,
@@ -352,7 +397,7 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
         title: title.trim(),
         assigned_to: personId,
         due_date: due || null,
-        description: null,
+        description: notes.trim() || null,
         assigned_in_meeting: false,
         rock_id: links.rock_id,
         kpi_id: links.kpi_id,
@@ -383,6 +428,10 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
           {goals.length > 0 && <optgroup label={`Annual goals · ${year}`}>{goals.map(g => <option key={g.id} value={`goal:${g.id}`}>{g.title}</option>)}</optgroup>}
           {teamGoals.length > 0 && <optgroup label={`Team goals · ${year}`}>{teamGoals.map(g => <option key={g.id} value={`team_goal:${g.id}`}>{g.title}</option>)}</optgroup>}
         </select>
+      </div>
+      <div className="mt-3">
+        <AutoTextarea id="new-task-notes" value={notes} onChange={setNotes} rows={2} placeholder="Notes (optional)"
+          className={`${field} leading-relaxed outline-none focus:border-blue-400`} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-gray-700">
@@ -449,7 +498,7 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
       </div>
       {repeats && (
         <p className="text-[11px] text-gray-400 mt-1.5">
-          Starts {shortDate(start)}. The next one always shows here; if one is still open when the next comes due, both stay until they're done.
+          Starts {shortDate(start)}. The next one always shows here; if one is still open when the next comes due, both stay until they're done.{notes.trim() ? ' Each one gets these notes.' : ''}
         </p>
       )}
 
