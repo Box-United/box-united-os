@@ -3,7 +3,8 @@ export type ProgressStatus = 'not-started' | 'on-track' | 'off-track' | 'done'
 export type RockStatus = ProgressStatus
 export type GoalStatus = ProgressStatus
 export type KpiStatus = ProgressStatus
-export type TeamTaskStatus = 'todo' | 'in-progress' | 'done'
+// Tasks share the goals' list too (migration 018); before it they were todo / in-progress / done
+export type TeamTaskStatus = ProgressStatus | 'todo' | 'in-progress'
 export type Department = 'program' | 'development' | 'operations' | 'marketing' | 'finance' | 'accounting'
 
 export interface Profile {
@@ -46,6 +47,7 @@ export interface TeamTask {
   team_goal_id?: string | null  // a team annual goal (migration 013)
   on_team_board?: boolean       // false for tasks that are only on the owner's dashboard
   recurring_id?: string | null  // the repeating schedule that made it (migration 016)
+  department?: Department | null  // empty = General (migration 018)
   assigned_in_meeting: boolean
   source: 'manual' | 'monday'
   monday_item_id: string | null
@@ -145,6 +147,7 @@ export interface RecurringTask {
   rock_id: string | null
   goal_id: string | null
   team_goal_id: string | null
+  department?: Department | null  // goes on each task it makes (migration 018)
   on_team_board: boolean
   frequency: 'weekly' | 'monthly'
   every_weeks: number

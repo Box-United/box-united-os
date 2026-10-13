@@ -1,5 +1,18 @@
-import type { RecurringTask, TeamTask } from '../types/database'
+import type { ProgressStatus, RecurringTask, TeamTask } from '../types/database'
 import { monthKey, shortDate } from './team'
+import { DEPARTMENTS } from './departments'
+
+// A task's status on the goals' list (rows saved before migration 018 say todo / in-progress)
+export function taskStatus(t: Pick<TeamTask, 'status'>): ProgressStatus {
+  return t.status === 'todo' ? 'not-started' : t.status === 'in-progress' ? 'on-track' : t.status
+}
+
+// Tasks grouped like team goals: General first, then each department's, in the order given
+export function byDepartment(tasks: TeamTask[]) {
+  return [null, ...DEPARTMENTS.map(d => d.id)]
+    .map(dept => ({ id: dept ?? 'general', dept, tasks: tasks.filter(t => (t.department ?? null) === dept) }))
+    .filter(g => g.tasks.length > 0)
+}
 
 // The month a finished task is filed under: when it was done (or, for tasks
 // archived by hand before filing was automatic, the month it was archived to)

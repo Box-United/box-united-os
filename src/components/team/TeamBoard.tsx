@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useGoalDataVersion } from '../../lib/linkEvents'
 import { AlertTriangle, MessageCircle, Plus, Trash2, Users } from 'lucide-react'
@@ -6,12 +6,16 @@ import { TeamRocks, TeamKpis, TeamMetricsAndGoals } from './TeamSections'
 import { useTeamTasks, type NewTeamTask } from '../../hooks/useTeamTasks'
 import { useKpis } from '../../hooks/useKpis'
 import { useRocks } from '../../hooks/useRocks'
-import type { Kpi, Rock, TeamTask } from '../../types/database'
+import type { Department, Kpi, ProgressStatus, Rock, TeamTask } from '../../types/database'
 import { useTeam, currentQuarter, quarterLabel, firstName, monthKey, monthLabel, shortDate } from '../../lib/team'
 import { PageShell, PageHeader } from '../layout/PageShell'
-import { doneMonth, isCurrent, pastMonths } from '../../lib/tasks'
+import { byDepartment, doneMonth, isCurrent, pastMonths, taskStatus } from '../../lib/tasks'
+import { taskDept } from '../../lib/departments'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { Avatar } from '../ui/Avatar'
 import { AutoTextarea } from '../ui/AutoTextarea'
+import { StatusPill } from '../ui/StatusPill'
+import { DeptChip, DeptGroupRow, DeptSelect } from '../ui/DeptTag'
 
 const CURRENT = 'current'
 
@@ -133,11 +137,12 @@ function TeamTasks() {
       {board.error && <p className="text-sm text-red-600 mb-3">{board.error}</p>}
 
       <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[860px]">
+        <table className="w-full text-sm min-w-[980px]">
           <thead>
             <tr className="text-left text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400 border-b border-gray-100">
               <th className="w-10 px-4 py-3" aria-label="Done" />
               <th className="px-2 py-3">Task</th>
+              <th className="px-2 py-3 w-32">Status</th>
               <th className="px-2 py-3 w-36">Owner</th>
               <th className="px-2 py-3 w-32">Due</th>
               <th className="px-2 py-3">Notes</th>
@@ -156,26 +161,31 @@ function TeamTasks() {
               />
             )}
             {board.loading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
             ) : rows.length === 0 && !adding ? (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
                   {view === CURRENT ? 'No team tasks yet. Use "Add task" to create one.' : 'Nothing archived for this month.'}
                 </td>
               </tr>
-            ) : rows.map(t => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                kpis={kpis}
-                allKpis={allKpis}
-                rocks={rocks}
-                goal={goalOf(t)}
-                editable={canEditTask(t) && view === CURRENT}
-                profiles={profiles}
-                onUpdate={patch => board.updateTask(t.id, patch)}
-                onDelete={() => board.deleteTeamTask(t.id)}
-              />
+            ) : byDepartment(rows).map(group => (
+              <Fragment key={group.id}>
+                <DeptGroupRow dept={group.dept} count={group.tasks.length} noun="task" cols={9} noneLabel="General" />
+                {group.tasks.map(t => (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    kpis={kpis}
+                    allKpis={allKpis}
+                    rocks={rocks}
+                    goal={goalOf(t)}
+                    editable={canEditTask(t) && view === CURRENT}
+                    profiles={profiles}
+                    onUpdate={patch => board.updateTask(t.id, patch)}
+                    onDelete={() => board.deleteTeamTask(t.id)}
+                  />
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -242,9 +252,12 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
   onSave: (t: NewTeamTask) => void
   onCancel: () => void
 }) {
-  const { me, profiles } = useTeam()
+  const { me, profiles, byId } = useTeam()
   const [title, setTitle] = useState('')
   const [owner, setOwner] = useState(me.id)
+  // Follows the owner's department until picked
+  const [pickedDept, setPickedDept] = useState<Department | null | undefined>(undefined)
+  const dept = pickedDept === undefined ? taskDept(byId(owner)) : pickedDept
   const [due, setDue] = useState('')
   const [notes, setNotes] = useState('')
   const [link, setLink] = useState('')
@@ -260,6 +273,8 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
       description: notes.trim() || null,
       assigned_in_meeting: inMeeting,
       ...parseLink(link),
+      // only sent when used, so tasks still save before migration 018
+      ...(dept ? { department: dept } : {}),
     })
   }
 
@@ -275,7 +290,9 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
       <td className="px-2 py-2">
         <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onKeyDown={keys} placeholder="New task…"
           className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-400" />
+        <div className="mt-1.5"><DeptSelect value={dept} onChange={setPickedDept} noneLabel="General" /></div>
       </td>
+      <td className="px-2 py-2 pt-3"><StatusPill status="not-started" small /></td>
       <td className="px-2 py-2">
         <select value={owner} onChange={e => setOwner(e.target.value)} aria-label="Owner" className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
           <option value="">Unassigned</option>
@@ -339,18 +356,25 @@ function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdat
           type="checkbox"
           checked={done}
           disabled={!editable}
-          onChange={e => onUpdate({ status: e.target.checked ? 'done' : 'todo' })}
+          onChange={e => onUpdate({ status: e.target.checked ? 'done' : 'not-started' })}
           aria-label={done ? 'Mark not done' : 'Mark done'}
           className="w-4 h-4 accent-blue-600"
         />
       </td>
       <td className="px-2 py-2.5">
-        <p className={`font-semibold text-gray-900 ${done ? 'line-through' : ''}`}>{task.title}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <p className={`font-semibold text-gray-900 ${done ? 'line-through' : ''}`}>{task.title}</p>
+          <DeptChip dept={task.department} editable={editable} noneLabel="General" onChange={department => onUpdate({ department })} />
+        </div>
         {task.needs_discussion && (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 rounded-full px-2 py-0.5 mt-1">
             <MessageCircle size={10} /> Discuss at next meeting
           </span>
         )}
+      </td>
+      <td className="px-2 py-2.5">
+        <StatusPill status={taskStatus(task)} small options={editable ? PROGRESS_OPTIONS : undefined}
+          onChange={editable ? s => onUpdate({ status: s as ProgressStatus }) : undefined} />
       </td>
       <td className="px-2 py-2.5">
         {editable ? (

@@ -5,9 +5,17 @@ import { pushTaskToMonday, removeTaskFromMonday } from '../lib/mondaySync'
 import { rollForward } from '../lib/rollForward'
 
 export type NewTeamTask = Pick<TeamTask, 'title' | 'assigned_to' | 'due_date' | 'description' | 'kpi_id' | 'rock_id' | 'assigned_in_meeting'>
-  & Partial<Pick<TeamTask, 'goal_id' | 'team_goal_id' | 'on_team_board'>>
+  & Partial<Pick<TeamTask, 'goal_id' | 'team_goal_id' | 'on_team_board' | 'department'>>
 
 export type NewRecurringTask = Omit<RecurringTask, 'id' | 'made_count' | 'last_date' | 'created_at'>
+
+// Before migration 018 tasks have no department and only take todo / in-progress / done
+const LEGACY_STATUS: Record<string, string> = { 'not-started': 'todo', 'on-track': 'in-progress' }
+function saveError(e: { code?: string; message: string }) {
+  return e.code === '23514' || e.message.includes('department')
+    ? 'Task departments and statuses need the latest database update (migration 018).'
+    : e.message
+}
 
 export function useTeamTasks() {
   const [tasks, setTasks] = useState<TeamTask[]>([])
@@ -36,13 +44,14 @@ export function useTeamTasks() {
 
   async function addTeamTask(task: NewTeamTask, createdBy: string) {
     setError(null)
+    // Status starts at the column default (Not started)
     const { data, error } = await supabase
       .from('team_tasks')
-      .insert({ ...task, created_by: createdBy, status: 'todo' })
+      .insert({ ...task, created_by: createdBy })
       .select('*')
       .single()
     if (error) {
-      setError(error.message)
+      setError(saveError(error))
       return false
     }
     setTasks(t => [...t, data as TeamTask])
@@ -54,10 +63,14 @@ export function useTeamTasks() {
     setError(null)
     const before = tasks
     setTasks(t => t.map(task => task.id === id ? { ...task, ...patch } : task))
-    const { data, error } = await supabase.from('team_tasks').update(patch).eq('id', id).select('*')
+    const save = (p: Partial<TeamTask>) => supabase.from('team_tasks').update(p).eq('id', id).select('*')
+    let { data, error } = await save(patch)
+    if (error?.code === '23514' && patch.status && LEGACY_STATUS[patch.status]) {
+      ({ data, error } = await save({ ...patch, status: LEGACY_STATUS[patch.status] as TeamTask['status'] }))
+    }
     if (error || !data?.length) {
       setTasks(before)
-      setError(error?.message ?? "You can't edit this task. Only its creator, owner or the owner's manager can.")
+      setError(error ? saveError(error) : "You can't edit this task. Only its creator, owner or the owner's manager can.")
       return
     }
     // pick up trigger-set fields (completed_at, archived_month)
@@ -83,7 +96,8 @@ export function useTeamTasks() {
     setError(null)
     const { error } = await supabase.from('recurring_tasks').insert(rule)
     if (error) {
-      setError(error.message.includes('recurring_tasks') ? 'Repeating tasks need the latest database update (migration 016).' : error.message)
+      const noTable = error.message.includes('recurring_tasks') && !error.message.includes('department')
+      setError(noTable ? 'Repeating tasks need the latest database update (migration 016).' : saveError(error))
       return false
     }
     await rollForward()
