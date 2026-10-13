@@ -14,6 +14,11 @@ export function deptInfo(d: Department | null | undefined) {
   return DEPARTMENTS.find(x => x.id === d)
 }
 
+// Where a new task for this person starts: their department, if they're in just one
+export function taskDept(person: Profile | undefined): Department | null {
+  return person?.departments?.length === 1 ? person.departments[0] : null
+}
+
 // A person's own departments plus those of everyone who reports up to them,
 // so a manager sees what their team covers
 export function departmentsOf(person: Profile, profiles: Profile[]): Department[] {

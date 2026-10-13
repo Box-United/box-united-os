@@ -1,15 +1,20 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Repeat, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Repeat, StickyNote, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { useTeamTasks } from '../../hooks/useTeamTasks'
 import { useRocks } from '../../hooks/useRocks'
 import { useKpis } from '../../hooks/useKpis'
 import { useIndividualGoals } from '../../hooks/useIndividualGoals'
 import { useAnnualGoals } from '../../hooks/useAnnualGoals'
-import type { RecurringTask, TeamTask } from '../../types/database'
+import type { Department, ProgressStatus, RecurringTask, TeamTask } from '../../types/database'
 import { useTeam, firstName, shortDate, currentQuarter, quarterLabel, monthKey, monthLabel } from '../../lib/team'
-import { describeSchedule, doneMonth, isoWeekday, MONTH_WEEKS, pastMonths, weekOfMonth, WEEKDAYS } from '../../lib/tasks'
+import { byDepartment, describeSchedule, doneMonth, isoWeekday, MONTH_WEEKS, pastMonths, taskStatus, weekOfMonth, WEEKDAYS } from '../../lib/tasks'
+import { DEPARTMENTS, taskDept } from '../../lib/departments'
+import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { SectionLabel } from '../layout/PageShell'
+import { AutoTextarea } from '../ui/AutoTextarea'
+import { StatusPill } from '../ui/StatusPill'
+import { DeptChip, DeptGroupRow } from '../ui/DeptTag'
 import { useGoalDataVersion } from '../../lib/linkEvents'
 
 type Board = ReturnType<typeof useTeamTasks>
@@ -191,11 +196,12 @@ type LinkOf = ReturnType<typeof useLinkTitles>
 function TaskTable({ board, rows, linkOf, loading, empty }: { board: Board; rows: TeamTask[]; linkOf: LinkOf; loading: boolean; empty: string }) {
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full text-sm min-w-[680px]">
+      <table className="w-full text-sm min-w-[800px]">
         <thead>
           <tr className="text-left text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400 border-b border-gray-100">
             <th className="w-10 px-4 py-3" aria-label="Done" />
             <th className="px-2 py-3">Task</th>
+            <th className="px-2 py-3 w-32">Status</th>
             <th className="px-2 py-3 w-36">Due</th>
             <th className="px-2 py-3">Supports</th>
             <th className="px-2 py-3 w-32">Source</th>
@@ -204,12 +210,17 @@ function TaskTable({ board, rows, linkOf, loading, empty }: { board: Board; rows
         </thead>
         <tbody>
           {loading ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+            <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
           ) : rows.length === 0 ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">{empty}</td></tr>
-          ) : rows.map(t => (
-            <TaskTableRow key={t.id} task={t} board={board} link={linkOf(t)}
-              rule={t.recurring_id ? board.recurring.find(r => r.id === t.recurring_id) : undefined} />
+            <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">{empty}</td></tr>
+          ) : byDepartment(rows).map(group => (
+            <Fragment key={group.id}>
+              <DeptGroupRow dept={group.dept} count={group.tasks.length} noun="task" cols={7} noneLabel="General" />
+              {group.tasks.map(t => (
+                <TaskTableRow key={t.id} task={t} board={board} link={linkOf(t)}
+                  rule={t.recurring_id ? board.recurring.find(r => r.id === t.recurring_id) : undefined} />
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -220,25 +231,45 @@ function TaskTable({ board, rows, linkOf, loading, empty }: { board: Board; rows
 function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: Board; link: ReturnType<LinkOf>; rule?: RecurringTask }) {
   const { me, byId, canEdit } = useTeam()
   const [confirming, setConfirming] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const editable = t.created_by === me.id || canEdit(t.assigned_to)
   const isDone = t.status === 'done'
 
   return (
     <Fragment>
-      <tr className={`border-b border-gray-50 last:border-0 group ${isDone ? 'opacity-60' : ''}`}>
+      <tr className={`group ${notesOpen ? '' : 'border-b border-gray-50 last:border-0'} ${isDone ? 'opacity-60' : ''}`}>
         <td className="px-4 py-2.5">
           <input type="checkbox" checked={isDone} disabled={!editable}
-            onChange={e => board.updateTask(t.id, { status: e.target.checked ? 'done' : 'todo' })}
+            onChange={e => board.updateTask(t.id, { status: e.target.checked ? 'done' : 'not-started' })}
             aria-label={isDone ? 'Mark not done' : 'Mark done'} className="w-4 h-4 accent-blue-600" />
         </td>
         <td className="px-2 py-2.5">
-          <p className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`}>{t.title}</p>
-          {t.description && <p className="text-xs text-gray-400 truncate max-w-[420px]">{t.description}</p>}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <p className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`}>{t.title}</p>
+            <DeptChip dept={t.department} editable={editable} noneLabel="General" onChange={department => board.updateTask(t.id, { department })} />
+            {editable && !t.description && !notesOpen && (
+              <button onClick={() => setNotesOpen(true)}
+                className="shrink-0 flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                <StickyNote size={10} /> Add notes
+              </button>
+            )}
+          </div>
+          {(t.description || notesOpen) && (
+            <button onClick={() => setNotesOpen(v => !v)} aria-expanded={notesOpen}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 max-w-[420px] text-left">
+              <StickyNote size={11} className="shrink-0" />
+              <span className="truncate">{notesOpen ? 'Hide notes' : t.description?.split('\n')[0]}</span>
+            </button>
+          )}
           {rule && (
             <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 mt-0.5">
               <Repeat size={10} /> {describeSchedule(rule)}
             </span>
           )}
+        </td>
+        <td className="px-2 py-2.5">
+          <StatusPill status={taskStatus(t)} small options={editable ? PROGRESS_OPTIONS : undefined}
+            onChange={editable ? s => board.updateTask(t.id, { status: s as ProgressStatus }) : undefined} />
         </td>
         <td className="px-2 py-2.5 text-xs"><DueLabel task={t} /></td>
         <td className="px-2 py-2.5 max-w-[320px]"><Advances link={link} /></td>
@@ -252,9 +283,17 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
           )}
         </td>
       </tr>
+      {notesOpen && (
+        <tr className="border-b border-gray-50 last:border-0">
+          <td />
+          <td colSpan={6} className="px-2 pb-3">
+            <TaskNotes task={t} board={board} editable={editable} />
+          </td>
+        </tr>
+      )}
       {confirming && (
         <tr className="bg-red-50/40 border-b border-red-100">
-          <td colSpan={6} className="px-4 py-2">
+          <td colSpan={7} className="px-4 py-2">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-gray-700 mr-auto">
                 Delete “{t.title}”? It won't count as done.{t.recurring_id && rule ? ' It repeats: delete just this one, or every open one and stop repeating?' : ''}
@@ -276,12 +315,32 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
   )
 }
 
+// A task's notes: links, who to call, where it's up to. Saved when you click away.
+function TaskNotes({ task, board, editable }: { task: TeamTask; board: Board; editable: boolean }) {
+  const [notes, setNotes] = useState(task.description ?? '')
+
+  function save() {
+    const next = notes.trim()
+    if (next !== (task.description ?? '').trim()) void board.updateTask(task.id, { description: next || null })
+  }
+
+  if (!editable) return <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-w-[min(640px,calc(100vw-6rem))]">{task.description}</p>
+  return (
+    <div className="max-w-[min(640px,calc(100vw-6rem))]">
+      <AutoTextarea id={`notes-${task.id}`} value={notes} onChange={setNotes} onBlur={save} autoFocus={!task.description} rows={3}
+        placeholder="Notes: links, who to call, where it's up to…"
+        className="text-sm text-gray-800 leading-relaxed border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 bg-white" />
+      <p className="text-[11px] text-gray-400 mt-1">Saves when you click away.</p>
+    </div>
+  )
+}
+
 type RepeatKind = 'none' | 'weekly' | 'monthly'
 type Ends = 'never' | 'on' | 'after'
 
 // Add a task by hand. Linking it to a rock, KPI or goal (or the Team Board) is optional.
 function AddTask({ board, personId, onClose }: { board: Board; personId: string; onClose: () => void }) {
-  const { me } = useTeam()
+  const { me, byId } = useTeam()
   const cq = currentQuarter()
   const year = cq.year
   const { rocks } = useRocks(quarterLabel(cq.q, year), personId)
@@ -289,8 +348,10 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
   const { goals } = useIndividualGoals(personId, year)
   const teamGoals = useAnnualGoals(year, me.id).goals
   const [title, setTitle] = useState('')
+  const [notes, setNotes] = useState('')
   const [due, setDue] = useState('')
   const [link, setLink] = useState('')
+  const [dept, setDept] = useState<Department | null>(taskDept(byId(personId)))
   const [team, setTeam] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -335,10 +396,12 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
     const saved = repeats
       ? await board.addRecurring({
         title: title.trim(),
-        description: null,
+        description: notes.trim() || null,
         assigned_to: personId,
         created_by: me.id,
         ...links,
+        // only sent when used, so tasks still save before migration 018
+        ...(dept ? { department: dept } : {}),
         on_team_board: team,
         frequency: repeat,
         every_weeks: repeat === 'weekly' ? everyWeeks : 1,
@@ -352,13 +415,14 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
         title: title.trim(),
         assigned_to: personId,
         due_date: due || null,
-        description: null,
+        description: notes.trim() || null,
         assigned_in_meeting: false,
         rock_id: links.rock_id,
         kpi_id: links.kpi_id,
         // only sent when used, so rock / KPI tasks still save before migration 013
         ...(links.goal_id ? { goal_id: links.goal_id } : {}),
         ...(links.team_goal_id ? { team_goal_id: links.team_goal_id } : {}),
+        ...(dept ? { department: dept } : {}),
         ...(team ? {} : { on_team_board: false }),
       }, me.id)
     setSaving(false)
@@ -370,11 +434,15 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
 
   return (
     <div className="card p-4 mb-3 border border-blue-100">
-      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_2fr] gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_2fr] gap-3">
         <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onClose() }}
           placeholder="Task…" className="text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400" />
         <input type="date" value={due} onChange={e => setDue(e.target.value)} aria-label={repeats ? 'Starts' : 'Due date'} title={repeats ? 'Starts' : 'Due date'}
           className={field} />
+        <select value={dept ?? ''} onChange={e => setDept((e.target.value || null) as Department | null)} aria-label="Department" className={field}>
+          <option value="">General</option>
+          {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
         <select value={link} onChange={e => setLink(e.target.value)} aria-label="What it supports"
           className={field} style={{ color: link ? '#1e293b' : '#6b7280' }}>
           <option value="">Supports a rock, KPI or goal? (optional)</option>
@@ -383,6 +451,10 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
           {goals.length > 0 && <optgroup label={`Annual goals · ${year}`}>{goals.map(g => <option key={g.id} value={`goal:${g.id}`}>{g.title}</option>)}</optgroup>}
           {teamGoals.length > 0 && <optgroup label={`Team goals · ${year}`}>{teamGoals.map(g => <option key={g.id} value={`team_goal:${g.id}`}>{g.title}</option>)}</optgroup>}
         </select>
+      </div>
+      <div className="mt-3">
+        <AutoTextarea id="new-task-notes" value={notes} onChange={setNotes} rows={2} placeholder="Notes (optional)"
+          className={`${field} leading-relaxed outline-none focus:border-blue-400`} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-gray-700">
@@ -449,7 +521,7 @@ function AddTask({ board, personId, onClose }: { board: Board; personId: string;
       </div>
       {repeats && (
         <p className="text-[11px] text-gray-400 mt-1.5">
-          Starts {shortDate(start)}. The next one always shows here; if one is still open when the next comes due, both stay until they're done.
+          Starts {shortDate(start)}. The next one always shows here; if one is still open when the next comes due, both stay until they're done.{notes.trim() ? ' Each one gets these notes.' : ''}
         </p>
       )}
 
