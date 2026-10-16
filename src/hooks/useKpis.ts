@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { goalDataChanged } from '../lib/linkEvents'
-import type { Department, Kpi, KpiArea } from '../types/database'
+import type { Department, Kpi, KpiArea, KpiUnit } from '../types/database'
 import { parentPatch } from '../lib/goalLinks'
 import { currentQuarter } from '../lib/team'
 
@@ -96,7 +96,7 @@ export function useKpis(userId?: string, period: KpiPeriod | null = currentPerio
 
   // `parent` is the goal or rock it supports ("team_goal:<id>" / "goal:<id>" / "rock:<id>"), if any.
   // `when` is the year, plus the quarter for a KPI that resets every quarter.
-  async function addKpi(area: KpiArea, title: string, target: number | null, when: { year: number; quarter: number | null }, parent = '') {
+  async function addKpi(area: KpiArea, title: string, target: number | null, when: { year: number; quarter: number | null }, parent = '', unit: KpiUnit = 'number') {
     const res = await supabase
       .from('kpis')
       .insert({
@@ -111,9 +111,12 @@ export function useKpis(userId?: string, period: KpiPeriod | null = currentPerio
         quarter: when.quarter,
         // links only sent when chosen, so KPIs still save before migration 014
         ...(parent ? parentPatch(parent, true) : {}),
+        // likewise percent, before migration 022
+        ...(unit === 'percent' ? { unit } : {}),
       })
       .select('*')
-    if (!failed(res)) setKpis(k => [...k, res.data![0] as Kpi])
+    const msg = unit === 'percent' ? 'Percent KPIs need the latest database update (migration 022).' : undefined
+    if (!failed(res, msg)) setKpis(k => [...k, res.data![0] as Kpi])
   }
 
   // Start a quarter from another quarter's KPIs (same KPIs and targets, counts at 0).
@@ -131,6 +134,7 @@ export function useKpis(userId?: string, period: KpiPeriod | null = currentPerio
         sort_order: k.sort_order,
         year: to.year,
         quarter: to.quarter,
+        ...(k.unit === 'percent' ? { unit: k.unit } : {}),
       })))
       .select('*')
     if (!failed(res)) setKpis(k => [...k, ...(res.data as Kpi[])])

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Copy, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { currentPeriod, kpiPeriodLabel, type KpiPeriod, type useKpis } from '../../hooks/useKpis'
-import type { Department, Kpi, KpiArea, KpiStatus, TeamTask } from '../../types/database'
+import type { Department, Kpi, KpiArea, KpiStatus, KpiUnit, TeamTask } from '../../types/database'
 import { useTeam, quarterLabel } from '../../lib/team'
 import { DEPARTMENTS } from '../../lib/departments'
 import { ProgressBar, SectionLabel } from '../layout/PageShell'
@@ -61,6 +61,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
   const [dept, setDept] = useState<Department | null>(null)
   const [target, setTarget] = useState('')
   const [cadence, setCadence] = useState<Cadence>('annual')
+  const [unit, setUnit] = useState<KpiUnit>('number')
   const [parent, setParent] = useState('')
   const [saving, setSaving] = useState(false)
   const options = useSupportOptions(personId)
@@ -91,6 +92,7 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     setDept(null)
     setTarget('')
     setCadence('annual')
+    setUnit('number')
     setParent('')
     setAdding(false)
   }
@@ -104,8 +106,8 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
     if (area && dept && area.department !== dept) await updateArea(area.id, { department: dept })
     if (!area) area = await addArea(personId, areaName.trim(), url, dept)
     if (area) {
-      const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
-      await addKpi(area, kpiTitle.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period), parent)
+      const t = parseNumber(target)
+      await addKpi(area, kpiTitle.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period), parent, unit)
       reset()
     }
     setSaving(false)
@@ -165,9 +167,17 @@ export function KpiPanel({ kpiState, tasks, editable, personId, fallbackMondayUr
               </select>
             </label>
             <label className="block">
-              <span className="block text-xs font-semibold text-gray-700 mb-1">Target number <span className="font-normal text-gray-400">(optional)</span></span>
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Counted in</span>
+              <select value={unit} onChange={e => setUnit(e.target.value as KpiUnit)}
+                className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400">
+                <option value="number">Number</option>
+                <option value="percent">Percent</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-gray-700 mb-1">Target {unit === 'percent' ? 'percent' : 'number'} <span className="font-normal text-gray-400">(optional)</span></span>
               <input value={target} onChange={e => setTarget(e.target.value)} inputMode="decimal"
-                placeholder="e.g. 30"
+                placeholder={unit === 'percent' ? 'e.g. 80' : 'e.g. 30'}
                 className="w-full text-sm outline-none border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-blue-400" />
             </label>
             <label className="block">
@@ -262,14 +272,16 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
   const [title, setTitle] = useState('')
   const [target, setTarget] = useState('')
   const [cadence, setCadence] = useState<Cadence>('annual')
+  const [unit, setUnit] = useState<KpiUnit>('number')
 
   function add() {
     if (!title.trim()) return
-    const t = target.trim() === '' ? null : Number(target.replace(/[,$]/g, ''))
-    kpiState.addKpi(area, title.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period))
+    const t = parseNumber(target)
+    kpiState.addKpi(area, title.trim(), t != null && !isNaN(t) ? t : null, whenFor(cadence, period), '', unit)
     setTitle('')
     setTarget('')
     setCadence('annual')
+    setUnit('number')
     setAdding(false)
   }
 
@@ -303,8 +315,13 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
         <div className="flex flex-wrap gap-2 py-2">
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
             placeholder="KPI (e.g. 30 schools submit surveys)" className="flex-1 min-w-[180px] text-sm outline-none border border-gray-200 rounded-lg px-3 py-1.5" />
+          <select value={unit} onChange={e => setUnit(e.target.value as KpiUnit)} aria-label="Counted in"
+            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+            <option value="number">Number</option>
+            <option value="percent">Percent</option>
+          </select>
           <input value={target} onChange={e => setTarget(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
-            placeholder="Target # (optional)" inputMode="decimal" className="w-36 text-sm outline-none border border-gray-200 rounded-lg px-3 py-1.5" />
+            placeholder={unit === 'percent' ? 'Target % (optional)' : 'Target # (optional)'} inputMode="decimal" className="w-36 text-sm outline-none border border-gray-200 rounded-lg px-3 py-1.5" />
           <select value={cadence} onChange={e => setCadence(e.target.value as Cadence)} aria-label="Counts start over"
             className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
             <option value="annual">Every year</option>
@@ -324,13 +341,21 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
   )
 }
 
+// "1,200", "$500" or "65%" → the number; empty → null
+function parseNumber(v: string) {
+  return v.trim() === '' ? null : Number(v.replace(/[,$%\s]/g, ''))
+}
+
 function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis>; options: SupportOptions; period: KpiPeriod }) {
   const { me } = useTeam()
   // Which number is being typed in: how far along it is, or the target
   const [editing, setEditing] = useState<'current' | 'target' | null>(null)
   const [val, setVal] = useState('')
   const numeric = kpi.target != null
-  const pct = numeric && kpi.target ? ((kpi.current ?? 0) / kpi.target) * 100 : 0
+  // A percent is already out of 100: the bar shows the level and marks the target
+  const percent = kpi.unit === 'percent'
+  const show = (n: number) => n.toLocaleString() + (percent ? '%' : '')
+  const pct = percent ? kpi.current ?? 0 : numeric && kpi.target ? ((kpi.current ?? 0) / kpi.target) * 100 : 0
   // Past quarters are history: they keep how they were counted
   const now = currentPeriod()
   const canSwitch = editable && periodIndex(period.year, period.q) >= periodIndex(now.year, now.q)
@@ -343,7 +368,7 @@ function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi;
 
   // An empty target makes it a KPI tracked by status alone
   function commit() {
-    const n = val.trim() === '' ? null : Number(val.replace(/[,$]/g, ''))
+    const n = parseNumber(val)
     if (n === null || !isNaN(n)) {
       kpiState.updateKpi(kpi.id, editing === 'target' ? { target: n, current: n != null ? kpi.current ?? 0 : kpi.current } : { current: n }, me.id)
     }
@@ -363,19 +388,19 @@ function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi;
         <EditableText value={kpi.title} editable={editable} onSave={title => kpiState.updateKpi(kpi.id, { title }, me.id)} label="KPI name"
           className="text-sm font-medium text-gray-900 leading-snug" />
         {numeric ? (
-          <div className="hidden sm:block"><ProgressBar pct={pct} tone={TONE[kpi.status]} /></div>
+          <div className="hidden sm:block"><ProgressBar pct={pct} tone={TONE[kpi.status]} marker={percent ? kpi.target! : undefined} /></div>
         ) : <span className="hidden sm:block" />}
         <div className="flex items-center gap-2 justify-end">
           {editing ? numberInput : numeric ? (
             <span className="text-xs font-bold text-gray-700 tabular-nums">
               <button disabled={!editable} onClick={() => edit('current')} title={editable ? 'Click to update' : undefined}
                 className="enabled:hover:text-blue-600 enabled:cursor-text">
-                {(kpi.current ?? 0).toLocaleString()}
+                {show(kpi.current ?? 0)}
               </button>
-              /
+              {percent ? <span className="font-normal text-gray-400"> · target </span> : '/'}
               <button disabled={!editable} onClick={() => edit('target')} title={editable ? 'Click to change the target' : undefined}
                 className="enabled:hover:text-blue-600 enabled:cursor-text">
-                {kpi.target!.toLocaleString()}
+                {show(kpi.target!)}
               </button>
             </span>
           ) : editable && (

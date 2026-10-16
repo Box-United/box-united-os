@@ -75,6 +75,7 @@ export interface AnnualGoal {
 // Built-in keys are 'schools', 'dollars_raised' and 'students'; added metrics get generated keys
 export type MetricKey = string
 export type MetricUnit = 'number' | 'currency' | 'percent'
+export type KpiUnit = 'number' | 'percent'
 
 export interface KeyMetric {
   key: MetricKey
@@ -131,6 +132,7 @@ export interface Kpi {
   year: number                  // the year it counts toward (migration 016)
   quarter: number | null        // 1–4 for a quarterly KPI; empty = annual
   copied_from?: string | null   // last period's KPI it was copied from
+  unit?: KpiUnit                // what it's counted in; number until migration 022
   updated_by: string | null
   updated_at: string
   created_at: string

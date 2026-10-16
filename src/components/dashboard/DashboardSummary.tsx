@@ -80,7 +80,13 @@ export function KpisSummary({ kpis, loading, title, right }: { kpis: Kpi[]; load
       <Rows>
         {kpis.map(k => (
           <Row key={k.id} title={k.title}>
-            {k.target != null && <span className="text-xs font-semibold text-gray-600 tabular-nums">{(k.current ?? 0).toLocaleString()}/{k.target.toLocaleString()}</span>}
+            {k.target != null && (
+              <span className="text-xs font-semibold text-gray-600 tabular-nums">
+                {k.unit === 'percent'
+                  ? <>{(k.current ?? 0).toLocaleString()}%<span className="font-normal text-gray-400"> · target </span>{k.target.toLocaleString()}%</>
+                  : <>{(k.current ?? 0).toLocaleString()}/{k.target.toLocaleString()}</>}
+              </span>
+            )}
             <StatusPill status={k.status} small />
           </Row>
         ))}
