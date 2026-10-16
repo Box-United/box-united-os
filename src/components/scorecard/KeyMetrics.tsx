@@ -47,7 +47,11 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
 
   const actual = metric?.actual ?? 0
   const target = metric?.target ?? 0
-  const pct = target > 0 ? (actual / target) * 100 : 0
+  // A percent is already out of 100: 65% with a 75% target fills the bar to 65
+  // and marks 75, rather than reading as "65% of 75%"
+  const isPercent = def.unit === 'percent'
+  const pct = isPercent ? actual : target > 0 ? (actual / target) * 100 : 0
+  const reached = target > 0 && actual >= target
   const actuals = history.filter(h => h.actual != null)
   const last3 = actuals.slice(-3)
   const sparkMax = Math.max(...last3.map(h => h.actual!), 1)
@@ -154,14 +158,14 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
             </button>
           )}
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-xs text-gray-400">of</span>
+            {target > 0 && <span className="text-xs text-gray-400">{isPercent ? 'target' : 'of'}</span>}
             {editingField === 'target' ? input(false) : (
               <button onClick={() => startEdit('target')} title="Click to set target"
                 className="text-xs font-medium hover:opacity-70 cursor-text" style={{ color: '#2563EB' }}>
                 {target > 0 ? config.format(target) : 'set target'}
               </button>
             )}
-            <span className="text-xs text-gray-400">target</span>
+            {target > 0 && !isPercent && <span className="text-xs text-gray-400">target</span>}
           </div>
         </div>
 
@@ -177,7 +181,7 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
         )}
       </div>
 
-      <div className="mt-4"><ProgressBar pct={pct} tone={pct >= 100 ? 'green' : 'blue'} /></div>
+      <div className="mt-4"><ProgressBar pct={pct} tone={reached ? 'green' : 'blue'} marker={isPercent && target > 0 ? target : undefined} /></div>
 
       <button onClick={() => setExpanded(e => !e)} aria-expanded={expanded}
         className="flex items-center gap-0.5 self-start mt-2.5 text-[11px] font-semibold text-gray-400 hover:text-blue-600">
@@ -225,7 +229,7 @@ function MetricCard({ def, metric, history, onUpdate, onRemove, onEdit, onMoveLe
               {[...history].reverse().map(h => (
                 <li key={h.id} className="flex text-xs text-gray-600 gap-2">
                   <span className="tabular-nums font-semibold">{h.actual != null ? config.format(h.actual) : '—'}</span>
-                  <span className="text-gray-400">/ {h.target != null ? config.format(h.target) : '—'}</span>
+                  <span className="text-gray-400">{isPercent ? 'target' : '/'} {h.target != null ? config.format(h.target) : '—'}</span>
                   <span className="ml-auto text-gray-400">{firstName(byId(h.edited_by))} · {shortDate(h.edited_at)}</span>
                 </li>
               ))}

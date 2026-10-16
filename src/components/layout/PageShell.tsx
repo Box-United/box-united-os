@@ -40,11 +40,18 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-export function ProgressBar({ pct, tone = 'blue' }: { pct: number; tone?: 'blue' | 'green' | 'amber' | 'red' }) {
+// marker: where the target sits on the bar (0–100), drawn as a short line
+export function ProgressBar({ pct, tone = 'blue', marker }: { pct: number; tone?: 'blue' | 'green' | 'amber' | 'red'; marker?: number }) {
   const color = { blue: '#2563EB', green: '#16a34a', amber: '#d97706', red: '#dc2626' }[tone]
+  const clamp = (n: number) => Math.max(0, Math.min(100, n))
   return (
-    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#E5E7EB' }}>
-      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} />
+    <div className="relative">
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#E5E7EB' }}>
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${clamp(pct)}%`, background: color }} />
+      </div>
+      {marker != null && (
+        <div className="absolute -top-1 -bottom-1 w-0.5 rounded-full" style={{ left: `calc(${clamp(marker)}% - 1px)`, background: '#0B1E39' }} />
+      )}
     </div>
   )
 }
