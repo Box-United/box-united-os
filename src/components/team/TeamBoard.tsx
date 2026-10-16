@@ -14,6 +14,7 @@ import { taskDept } from '../../lib/departments'
 import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { Avatar } from '../ui/Avatar'
 import { AutoTextarea } from '../ui/AutoTextarea'
+import { EditableText } from '../ui/EditableText'
 import { StatusPill } from '../ui/StatusPill'
 import { DeptChip, DeptGroupRow, DeptSelect } from '../ui/DeptTag'
 
@@ -182,6 +183,7 @@ function TeamTasks() {
                     editable={canEditTask(t) && view === CURRENT}
                     profiles={profiles}
                     onUpdate={patch => board.updateTask(t.id, patch)}
+                    onRename={title => board.renameTask(t.id, title)}
                     onDelete={() => board.deleteTeamTask(t.id)}
                   />
                 ))}
@@ -328,7 +330,7 @@ function AddRow({ kpis, rocks, onSave, onCancel }: {
 
 // ---------- existing row ----------
 
-function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdate, onDelete }: {
+function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdate, onRename, onDelete }: {
   task: TeamTask
   kpis: Kpi[]
   allKpis: Kpi[]
@@ -337,6 +339,7 @@ function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdat
   editable: boolean
   profiles: ReturnType<typeof useTeam>['profiles']
   onUpdate: (patch: Partial<TeamTask>) => void
+  onRename: (title: string) => void
   onDelete: () => void
 }) {
   const { byId, me } = useTeam()
@@ -363,7 +366,8 @@ function TaskRow({ task, kpis, allKpis, rocks, goal, editable, profiles, onUpdat
       </td>
       <td className="px-2 py-2.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <p className={`font-semibold text-gray-900 ${done ? 'line-through' : ''}`}>{task.title}</p>
+          <EditableText value={task.title} editable={editable} onSave={onRename} label="Task name"
+            className={`font-semibold text-gray-900 ${done ? 'line-through' : ''}`} />
           <DeptChip dept={task.department} editable={editable} noneLabel="General" onChange={department => onUpdate({ department })} />
         </div>
         {task.needs_discussion && (

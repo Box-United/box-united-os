@@ -78,6 +78,27 @@ export function useTeamTasks() {
     pushTaskToMonday(id)
   }
 
+  // A repeating task is renamed from here on: its schedule and every open one
+  // (finished ones keep the name they were done under)
+  async function renameTask(id: string, title: string) {
+    const ruleId = tasks.find(t => t.id === id)?.recurring_id
+    if (!ruleId) return updateTask(id, { title })
+    setError(null)
+    const before = tasks
+    const ids = tasks.filter(t => t.recurring_id === ruleId && (t.status !== 'done' || t.id === id)).map(t => t.id)
+    setTasks(t => t.map(task => ids.includes(task.id) ? { ...task, title } : task))
+    const rule = await supabase.from('recurring_tasks').update({ title }).eq('id', ruleId).select('id')
+    const renamed = await supabase.from('team_tasks').update({ title }).in('id', ids).select('id')
+    if (rule.error || !rule.data?.length || renamed.error || !renamed.data?.length) {
+      setTasks(before)
+      setError("You can't rename this task. Only its creator, owner or the owner's manager can.")
+      await fetchAll()
+      return
+    }
+    setRecurring(r => r.map(x => x.id === ruleId ? { ...x, title } : x))
+    for (const taskId of ids) pushTaskToMonday(taskId)
+  }
+
   async function deleteTeamTask(id: string) {
     const before = tasks
     const mondayItemId = tasks.find(t => t.id === id)?.monday_item_id
@@ -123,5 +144,5 @@ export function useTeamTasks() {
     for (const t of open) if (t.monday_item_id) removeTaskFromMonday(t.monday_item_id)
   }
 
-  return { tasks, recurring, loading, error, setError, addTeamTask, addRecurring, updateTask, deleteTeamTask, deleteSeries, refetch: fetchAll }
+  return { tasks, recurring, loading, error, setError, addTeamTask, addRecurring, updateTask, renameTask, deleteTeamTask, deleteSeries, refetch: fetchAll }
 }

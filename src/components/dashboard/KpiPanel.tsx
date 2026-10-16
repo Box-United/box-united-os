@@ -6,6 +6,7 @@ import { useTeam, quarterLabel } from '../../lib/team'
 import { DEPARTMENTS } from '../../lib/departments'
 import { ProgressBar, SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { EditableText } from '../ui/EditableText'
 import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { DeptSelect, DeptTag } from '../ui/DeptTag'
 import { SupportsPicker } from '../ui/SupportsPicker'
@@ -275,7 +276,9 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
   return (
     <div className="group/area">
       <div className="flex items-center gap-2 pb-1.5 border-b border-gray-100">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-700">{area.name}</h3>
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-700">
+          <EditableText value={area.name} editable={editable} onSave={name => kpiState.updateArea(area.id, { name })} label="Area name" className="uppercase" />
+        </h3>
         {editable
           ? <DeptSelect value={area.department} onChange={d => kpiState.updateArea(area.id, { department: d })} noneLabel="No department" />
           : <DeptTag dept={area.department} />}
@@ -323,7 +326,8 @@ function AreaBlock({ area, kpis, tasks, editable, kpiState, options, mondayUrl, 
 
 function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi; tasks: TeamTask[]; editable: boolean; kpiState: ReturnType<typeof useKpis>; options: SupportOptions; period: KpiPeriod }) {
   const { me } = useTeam()
-  const [editing, setEditing] = useState(false)
+  // Which number is being typed in: how far along it is, or the target
+  const [editing, setEditing] = useState<'current' | 'target' | null>(null)
   const [val, setVal] = useState('')
   const numeric = kpi.target != null
   const pct = numeric && kpi.target ? ((kpi.current ?? 0) / kpi.target) * 100 : 0
@@ -331,35 +335,54 @@ function KpiRow({ kpi, tasks, editable, kpiState, options, period }: { kpi: Kpi;
   const now = currentPeriod()
   const canSwitch = editable && periodIndex(period.year, period.q) >= periodIndex(now.year, now.q)
 
+  function edit(field: 'current' | 'target') {
+    const n = field === 'current' ? kpi.current : kpi.target
+    setVal(n != null ? String(n) : '')
+    setEditing(field)
+  }
+
+  // An empty target makes it a KPI tracked by status alone
   function commit() {
     const n = val.trim() === '' ? null : Number(val.replace(/[,$]/g, ''))
-    if (n === null || !isNaN(n)) kpiState.updateKpi(kpi.id, { current: n }, me.id)
-    setEditing(false)
+    if (n === null || !isNaN(n)) {
+      kpiState.updateKpi(kpi.id, editing === 'target' ? { target: n, current: n != null ? kpi.current ?? 0 : kpi.current } : { current: n }, me.id)
+    }
+    setEditing(null)
   }
+
+  const numberInput = (
+    <input autoFocus value={val} onChange={e => setVal(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(null) }}
+      inputMode="decimal" aria-label={editing === 'target' ? 'Target' : 'Progress'} placeholder={editing === 'target' ? 'Target' : undefined}
+      className="w-16 text-xs text-right border-b border-blue-500 outline-none tabular-nums" />
+  )
 
   return (
     <li className="py-2.5 border-b border-gray-50 last:border-0 group">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-x-3 gap-y-1.5">
-        <p className="text-sm font-medium text-gray-900 leading-snug">{kpi.title}</p>
+        <EditableText value={kpi.title} editable={editable} onSave={title => kpiState.updateKpi(kpi.id, { title }, me.id)} label="KPI name"
+          className="text-sm font-medium text-gray-900 leading-snug" />
         {numeric ? (
           <div className="hidden sm:block"><ProgressBar pct={pct} tone={TONE[kpi.status]} /></div>
         ) : <span className="hidden sm:block" />}
         <div className="flex items-center gap-2 justify-end">
-          {numeric && (
-            editing ? (
-              <input autoFocus value={val} onChange={e => setVal(e.target.value)} onBlur={commit}
-                onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-                inputMode="decimal" className="w-16 text-xs text-right border-b border-blue-500 outline-none tabular-nums" />
-            ) : (
-              <button
-                disabled={!editable}
-                onClick={() => { setVal(kpi.current != null ? String(kpi.current) : ''); setEditing(true) }}
-                title={editable ? 'Click to update' : undefined}
-                className="text-xs font-bold text-gray-700 tabular-nums enabled:hover:text-blue-600 enabled:cursor-text"
-              >
-                {(kpi.current ?? 0).toLocaleString()}/{kpi.target!.toLocaleString()}
+          {editing ? numberInput : numeric ? (
+            <span className="text-xs font-bold text-gray-700 tabular-nums">
+              <button disabled={!editable} onClick={() => edit('current')} title={editable ? 'Click to update' : undefined}
+                className="enabled:hover:text-blue-600 enabled:cursor-text">
+                {(kpi.current ?? 0).toLocaleString()}
               </button>
-            )
+              /
+              <button disabled={!editable} onClick={() => edit('target')} title={editable ? 'Click to change the target' : undefined}
+                className="enabled:hover:text-blue-600 enabled:cursor-text">
+                {kpi.target!.toLocaleString()}
+              </button>
+            </span>
+          ) : editable && (
+            <button onClick={() => edit('target')}
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] text-gray-400 hover:text-blue-600 flex items-center gap-0.5">
+              <Plus size={10} /> Target
+            </button>
           )}
           {canSwitch ? (
             <select value={cadenceOf(kpi)} aria-label="Counts start over"

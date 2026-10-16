@@ -13,6 +13,7 @@ import { DEPARTMENTS, taskDept } from '../../lib/departments'
 import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { SectionLabel } from '../layout/PageShell'
 import { AutoTextarea } from '../ui/AutoTextarea'
+import { EditableText } from '../ui/EditableText'
 import { StatusPill } from '../ui/StatusPill'
 import { DeptChip, DeptGroupRow } from '../ui/DeptTag'
 import { useGoalDataVersion } from '../../lib/linkEvents'
@@ -112,6 +113,19 @@ function DueLabel({ task }: { task: TeamTask }) {
   )
 }
 
+// The due date, for people who can change it: overdue and today still say so
+function DueInput({ task, onChange }: { task: TeamTask; onChange: (due: string | null) => void }) {
+  const overdue = task.status !== 'done' && !!task.due_date && task.due_date < today()
+  const isToday = task.due_date === today()
+  return (
+    <span className="flex items-center gap-1">
+      {(overdue || isToday) && <span className={overdue ? 'text-red-600 font-semibold' : 'text-gray-700'}>{overdue ? 'Overdue' : 'Today'}</span>}
+      <input type="date" value={task.due_date ?? ''} onChange={e => onChange(e.target.value || null)} aria-label="Due date"
+        className={`bg-transparent outline-none tabular-nums ${overdue ? 'text-red-600 font-semibold' : task.due_date ? 'text-gray-700' : 'text-gray-400'}`} />
+    </span>
+  )
+}
+
 function Advances({ link }: { link: { kind: string; title?: string; up?: string; unlinked?: boolean } }) {
   return (
     <span className="inline-flex flex-col items-start gap-0.5 max-w-full">
@@ -202,7 +216,7 @@ function TaskTable({ board, rows, linkOf, loading, empty }: { board: Board; rows
             <th className="w-10 px-4 py-3" aria-label="Done" />
             <th className="px-2 py-3">Task</th>
             <th className="px-2 py-3 w-32">Status</th>
-            <th className="px-2 py-3 w-36">Due</th>
+            <th className="px-2 py-3 w-48">Due</th>
             <th className="px-2 py-3">Supports</th>
             <th className="px-2 py-3 w-32">Source</th>
             <th className="w-10" aria-label="Delete" />
@@ -245,7 +259,8 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
         </td>
         <td className="px-2 py-2.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <p className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`}>{t.title}</p>
+            <EditableText value={t.title} editable={editable} onSave={title => board.renameTask(t.id, title)} label="Task name"
+              className={`font-semibold text-gray-900 ${isDone ? 'line-through' : ''}`} />
             <DeptChip dept={t.department} editable={editable} noneLabel="General" onChange={department => board.updateTask(t.id, { department })} />
             {editable && !t.description && !notesOpen && (
               <button onClick={() => setNotesOpen(true)}
@@ -271,7 +286,11 @@ function TaskTableRow({ task: t, board, link, rule }: { task: TeamTask; board: B
           <StatusPill status={taskStatus(t)} small options={editable ? PROGRESS_OPTIONS : undefined}
             onChange={editable ? s => board.updateTask(t.id, { status: s as ProgressStatus }) : undefined} />
         </td>
-        <td className="px-2 py-2.5 text-xs"><DueLabel task={t} /></td>
+        <td className="px-2 py-2.5 text-xs">
+          {editable
+            ? <DueInput task={t} onChange={due_date => board.updateTask(t.id, { due_date })} />
+            : <DueLabel task={t} />}
+        </td>
         <td className="px-2 py-2.5 max-w-[320px]"><Advances link={link} /></td>
         <td className="px-2 py-2.5 text-xs text-gray-400">{sourceLabel(t, firstName(byId(t.created_by)))}</td>
         <td className="px-2 py-2.5">
