@@ -41,8 +41,9 @@ export function useRocks(quarter: string, userId?: string) {
 
   const updateRockStatus = (id: string, status: RockStatus) => updateRock(id, { status })
   const setRockGoal = (id: string, parent: string) => updateRock(id, parentPatch(parent, false))
+  const renameRock = (id: string, title: string) => updateRock(id, { title })
 
-  async function updateRock(id: string, patch: Partial<Pick<Rock, 'status' | 'team_goal_id' | 'goal_id'>>) {
+  async function updateRock(id: string, patch: Partial<Pick<Rock, 'title' | 'status' | 'team_goal_id' | 'goal_id'>>) {
     const before = rocks
     setRocks(r => r.map(rock => rock.id === id ? { ...rock, ...patch } : rock))
     const res = await supabase.from('rocks').update(patch).eq('id', id).select('id')
@@ -68,5 +69,5 @@ export function useRocks(quarter: string, userId?: string) {
     }
   }
 
-  return { rocks, loading, error, addRock, updateRockStatus, setRockGoal, deleteRock, refetch: fetchRocks }
+  return { rocks, loading, error, addRock, updateRockStatus, setRockGoal, renameRock, deleteRock, refetch: fetchRocks }
 }

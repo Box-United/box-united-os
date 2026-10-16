@@ -5,6 +5,7 @@ import type { Profile, RockStatus } from '../../types/database'
 import { useTeam, displayName } from '../../lib/team'
 import { Avatar } from '../ui/Avatar'
 import { StatusPill } from '../ui/StatusPill'
+import { EditableText } from '../ui/EditableText'
 import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { SupportsPicker } from '../ui/SupportsPicker'
 import { useSupportOptions } from '../../hooks/useGoalLinks'
@@ -51,7 +52,8 @@ export function RockCard({ person, rocks, quarter, showName = true }: Props) {
       <ul className="space-y-2">
         {mine.map(r => (
           <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gray-100 px-3 py-2 group">
-            <span className="flex-1 min-w-[120px] text-sm text-gray-800 leading-snug">{r.title}</span>
+            <EditableText value={r.title} editable={editable} onSave={title => rocks.renameRock(r.id, title)} label="Rock name"
+              className="flex-1 min-w-[120px] text-sm text-gray-800 leading-snug" />
             <StatusPill status={r.status} small options={editable ? PROGRESS_OPTIONS : undefined}
               onChange={editable ? s => rocks.updateRockStatus(r.id, s as RockStatus) : undefined} />
             {editable && (

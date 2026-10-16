@@ -4,6 +4,7 @@ import { useIndividualGoals } from '../../hooks/useIndividualGoals'
 import type { KpiStatus } from '../../types/database'
 import { SectionLabel } from '../layout/PageShell'
 import { StatusPill } from '../ui/StatusPill'
+import { EditableText } from '../ui/EditableText'
 import { PROGRESS_OPTIONS } from '../../lib/statuses'
 import { GoalRollup } from '../scorecard/GoalRollup'
 import { useGoalChildren } from '../../hooks/useGoalLinks'
@@ -87,7 +88,8 @@ export function IndividualGoals({ personId, editable, extra }: Props) {
           {goals.map(g => (
             <li key={g.id} className="rounded-lg border border-gray-100 px-3 py-2.5 group">
               <div className="flex items-center gap-2">
-                <span className="flex-1 text-sm font-medium text-gray-900 leading-snug">{g.title}</span>
+                <EditableText value={g.title} editable={editable} onSave={title => updateGoal(g.id, { title })} label="Goal name"
+                  className="flex-1 text-sm font-medium text-gray-900 leading-snug" />
                 <StatusPill
                   status={g.status}
                   small
