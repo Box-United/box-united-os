@@ -5,7 +5,7 @@
 -- a mark at the target, instead of "65/80". Copies made when a quarter or
 -- year ends keep the KPI's unit.
 --
--- Dorothy's KPIs whose names end in "(%)" become percent KPIs and lose the
+-- Alexis's KPIs whose names end in "(%)" become percent KPIs and lose the
 -- "(%)", since the OS now shows it. Safe to run again.
 
 alter table public.kpis add column if not exists unit text not null default 'number';
@@ -34,4 +34,4 @@ update public.kpis
   set unit = 'percent',
       title = regexp_replace(title, '\s*\(%\)\s*$', '')
   where title ~ '\(%\)\s*$'
-    and user_id = (select id from public.profiles where lower(email) = 'dorothy@boxunited.org');
+    and user_id = (select id from public.profiles where lower(email) = 'alexis@boxunited.org');
